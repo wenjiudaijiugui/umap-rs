@@ -39,6 +39,16 @@ cargo run --release
 
 `cargo run` executes a toy dataset embedding and then transforms a small query subset.
 
+## CI-facing validation
+
+Repository automation keeps benchmark validation staged in this order:
+
+1. Compare consistency against public implementations.
+2. Check for euclidean no-regression on timing and memory.
+3. Run a deeper optimization-stage benchmark report when explicitly requested.
+
+The Rust crate remains the unit under test in all three stages.
+
 ## Minimal library usage
 
 ```rust

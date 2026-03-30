@@ -31,3 +31,34 @@ The benchmark scripts use:
 - R: `uwot`, `jsonlite`
 
 See `benchmarks/compare_real_impls_fair.py` for exact execution settings.
+
+## CI and Benchmark Gates
+
+The repository CI is intentionally staged:
+
+1. Public-implementation consistency smoke check.
+2. Euclidean no-regression smoke check against a baseline branch.
+3. Optional optimization-stage benchmark report in a deeper manual/scheduled workflow.
+
+Fast PR validation lives in `.github/workflows/ci.yml`.
+Deeper benchmark reporting lives in `.github/workflows/deep-benchmark-report.yml`.
+
+## Local Validation Commands
+
+```bash
+cargo test --manifest-path rust_umap/Cargo.toml
+
+python3 -m py_compile \
+  benchmarks/compare_real_impls_fair.py \
+  benchmarks/ci_consistency_smoke.py \
+  benchmarks/ci_no_regression.py
+
+python benchmarks/ci_consistency_smoke.py \
+  --python-bin python \
+  --rscript-bin Rscript \
+  --require-r
+
+python benchmarks/ci_no_regression.py \
+  --candidate-root . \
+  --baseline-root .
+```
