@@ -1,4 +1,4 @@
-use rust_umap::{InitMethod, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
 use std::env;
 use std::error::Error;
 use std::fs::File;
@@ -19,6 +19,32 @@ fn parse_init(s: &str) -> Result<InitMethod, Box<dyn Error>> {
         "spectral" => Ok(InitMethod::Spectral),
         _ => Err(format!("unsupported init '{s}', expected random|spectral").into()),
     }
+}
+
+fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
+    match s.to_ascii_lowercase().as_str() {
+        "euclidean" => Ok(Metric::Euclidean),
+        "manhattan" | "l1" => Ok(Metric::Manhattan),
+        "cosine" => Ok(Metric::Cosine),
+        _ => Err(format!("unsupported metric '{s}', expected euclidean|manhattan|cosine").into()),
+    }
+}
+
+fn extract_metric_arg(args: &mut Vec<String>) -> Result<Metric, Box<dyn Error>> {
+    let mut metric = Metric::Euclidean;
+    let mut i = 1;
+    while i < args.len() {
+        if args[i] == "--metric" {
+            if i + 1 >= args.len() {
+                return Err("--metric requires a value".into());
+            }
+            metric = parse_metric(&args[i + 1])?;
+            args.drain(i..=i + 1);
+        } else {
+            i += 1;
+        }
+    }
+    Ok(metric)
 }
 
 fn read_csv(path: &Path) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
@@ -84,14 +110,15 @@ fn usage() {
     eprintln!(
         "Usage:\n  fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \
           <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> \
-          <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args]\n\
+          <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] [--metric euclidean|manhattan|cosine]\n\
           mode=fit_precomputed extra args: <knn_idx.csv> <knn_dist.csv>\n\
           mode=transform|inverse extra args: <ref_input.csv>"
     );
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
+    let metric = extract_metric_arg(&mut args)?;
     if args.len() < 12 {
         usage();
         return Err("insufficient arguments".into());
@@ -120,6 +147,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         n_neighbors,
         n_components,
         n_epochs: Some(n_epochs),
+        metric,
         learning_rate: 1.0,
         min_dist: 0.1,
         spread: 1.0,

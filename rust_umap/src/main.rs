@@ -1,4 +1,4 @@
-use rust_umap::{InitMethod, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
 
 fn make_toy_data(n: usize) -> Vec<Vec<f32>> {
     let mut data = Vec::with_capacity(n);
@@ -27,6 +27,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         n_neighbors: 15,
         n_components: 2,
         n_epochs: Some(200),
+        metric: Metric::Euclidean,
         learning_rate: 1.0,
         min_dist: 0.1,
         spread: 1.0,
@@ -49,7 +50,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("learned curve parameters: a={a:.6}, b={b:.6}");
     }
 
-    println!("embedding shape: {} x {}", embedding.len(), embedding[0].len());
+    println!(
+        "embedding shape: {} x {}",
+        embedding.len(),
+        embedding[0].len()
+    );
     println!("first 10 embedded points:");
     for (i, row) in embedding.iter().take(10).enumerate() {
         println!("{i:3}: [{:.6}, {:.6}]", row[0], row[1]);
@@ -57,10 +62,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let query = data.iter().skip(190).cloned().collect::<Vec<_>>();
     let transformed = umap.transform(&query)?;
-    println!("transformed shape: {} x {}", transformed.len(), transformed[0].len());
+    println!(
+        "transformed shape: {} x {}",
+        transformed.len(),
+        transformed[0].len()
+    );
 
     let inverse = umap.inverse_transform(&transformed)?;
-    println!("inverse transformed shape: {} x {}", inverse.len(), inverse[0].len());
+    println!(
+        "inverse transformed shape: {} x {}",
+        inverse.len(),
+        inverse[0].len()
+    );
 
     Ok(())
 }
