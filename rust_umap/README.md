@@ -13,6 +13,7 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 - Two initialization strategies:
   - `InitMethod::Spectral` (normalized graph Laplacian eigenvectors)
   - `InitMethod::Random`
+- Spectral initialization for disconnected graphs via component-aware layout
 - Stochastic layout optimization with negative sampling
 - End-to-end training APIs:
   - `fit_transform`
@@ -27,7 +28,6 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 - Full `pynndescent`-equivalent ANN quality/performance parity
 - Non-Euclidean metrics
 - Sparse input support
-- Multi-component spectral layout heuristics from upstream implementation
 
 ## Quick start
 
