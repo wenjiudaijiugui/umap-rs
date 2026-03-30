@@ -1,4 +1,4 @@
-use rust_umap::{InitMethod, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -60,6 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         n_neighbors: 15,
         n_components: 2,
         n_epochs: Some(200),
+        metric: Metric::Euclidean,
         learning_rate: 1.0,
         min_dist: 0.1,
         spread: 1.0,
