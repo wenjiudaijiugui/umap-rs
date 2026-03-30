@@ -3,7 +3,9 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -29,9 +31,22 @@ REPORT_JSON = BENCH_DIR / "report_real_fair.json"
 REPORT_MD = BENCH_DIR / "report_real_fair.md"
 PREVIOUS_REPORT_JSON = BENCH_DIR / "report_real.json"
 
-ENV_PREFIX = Path("/home/shenshang/miniforge3/envs/umap_bench")
-PYTHON_BIN = ENV_PREFIX / "bin" / "python"
-RSCRIPT_BIN = ENV_PREFIX / "bin" / "Rscript"
+LEGACY_ENV_PREFIX = Path("/home/shenshang/miniforge3/envs/umap_bench")
+DEFAULT_PYTHON_BIN = Path(
+    os.environ.get(
+        "UMAP_BENCH_PYTHON",
+        str((LEGACY_ENV_PREFIX / "bin" / "python") if (LEGACY_ENV_PREFIX / "bin" / "python").exists() else Path(sys.executable)),
+    )
+)
+DEFAULT_RSCRIPT_BIN = Path(
+    os.environ.get(
+        "UMAP_BENCH_RSCRIPT",
+        str((LEGACY_ENV_PREFIX / "bin" / "Rscript") if (LEGACY_ENV_PREFIX / "bin" / "Rscript").exists() else (shutil.which("Rscript") or "Rscript")),
+    )
+)
+
+PYTHON_BIN = DEFAULT_PYTHON_BIN
+RSCRIPT_BIN = DEFAULT_RSCRIPT_BIN
 
 RUN_PY_E2E = BENCH_DIR / "run_python_umap.py"
 RUN_R_E2E = BENCH_DIR / "run_r_uwot.R"
@@ -84,6 +99,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--repeats", type=int, default=5)
     p.add_argument("--large-max-samples", type=int, default=15000)
     p.add_argument("--sample-cap-consistency", type=int, default=2000)
+    p.add_argument("--python-bin", default=str(DEFAULT_PYTHON_BIN))
+    p.add_argument("--rscript-bin", default=str(DEFAULT_RSCRIPT_BIN))
     return p.parse_args()
 
 
@@ -576,7 +593,10 @@ def compare_with_previous(previous_report: Optional[Dict[str, object]], current_
 
 
 def main() -> None:
+    global PYTHON_BIN, RSCRIPT_BIN
     args = parse_args()
+    PYTHON_BIN = Path(args.python_bin)
+    RSCRIPT_BIN = Path(args.rscript_bin)
     ensure_dirs()
     build_rust_binaries()
 
@@ -666,6 +686,8 @@ def main() -> None:
         f"- n_neighbors={N_NEIGHBORS}, n_components={N_COMPONENTS}, n_epochs={N_EPOCHS}, init={INIT}, seed={args.seed}"
     )
     lines.append(f"- warmup={args.warmup}, repeats={args.repeats}, randomized_order_per_repeat=True")
+    lines.append(f"- python_bin={PYTHON_BIN}")
+    lines.append(f"- rscript_bin={RSCRIPT_BIN}")
     lines.append("- groups: e2e_default_ann, algo_exact_shared_knn")
     lines.append("- thread pinning: " + ", ".join([f"{k}={v}" for k, v in THREAD_ENV.items()]))
     lines.append("")

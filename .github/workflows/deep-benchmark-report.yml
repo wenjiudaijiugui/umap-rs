@@ -1,0 +1,138 @@
+name: deep-benchmark-report
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: baseline ref for no-regression comparison
+        required: false
+        default: origin/main
+      warmup:
+        description: warmup runs per implementation
+        required: false
+        default: '1'
+      repeats:
+        description: measured repeats per implementation
+        required: false
+        default: '3'
+      large_max_samples:
+        description: max samples for california_housing
+        required: false
+        default: '5000'
+      sample_cap_consistency:
+        description: max sample size used for consistency metrics
+        required: false
+        default: '2000'
+  schedule:
+    - cron: '0 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  consistency-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3'
+      - name: Install Python benchmark deps
+        run: python -m pip install --upgrade pip && python -m pip install numpy scipy scikit-learn umap-learn
+      - name: Install R benchmark deps
+        run: Rscript -e 'install.packages(c("uwot", "jsonlite"), repos="https://cloud.r-project.org")'
+      - name: Public implementation consistency smoke gate
+        run: |
+          python benchmarks/ci_consistency_smoke.py \
+            --python-bin python \
+            --rscript-bin Rscript \
+            --require-r | tee consistency-smoke.json
+      - name: Upload consistency smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-consistency-smoke
+          path: consistency-smoke.json
+
+  no-regression-smoke:
+    needs: consistency-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Materialize baseline worktree
+        env:
+          BASELINE_REF: ${{ github.event.inputs.baseline_ref || 'origin/main' }}
+        run: |
+          git fetch origin main --depth=1
+          git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASELINE_REF"
+      - name: Euclidean no-regression smoke gate
+        run: |
+          python benchmarks/ci_no_regression.py \
+            --candidate-root "$GITHUB_WORKSPACE" \
+            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" | tee no-regression-smoke.json
+      - name: Upload no-regression artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-no-regression-smoke
+          path: no-regression-smoke.json
+
+  optimization-report:
+    needs: no-regression-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3'
+      - name: Install Python benchmark deps
+        run: python -m pip install --upgrade pip && python -m pip install numpy scipy scikit-learn umap-learn
+      - name: Install R benchmark deps
+        run: Rscript -e 'install.packages(c("uwot", "jsonlite"), repos="https://cloud.r-project.org")'
+      - name: Run fair benchmark report
+        env:
+          WARMUP: ${{ github.event.inputs.warmup || '1' }}
+          REPEATS: ${{ github.event.inputs.repeats || '3' }}
+          LARGE_MAX_SAMPLES: ${{ github.event.inputs.large_max_samples || '5000' }}
+          SAMPLE_CAP_CONSISTENCY: ${{ github.event.inputs.sample_cap_consistency || '2000' }}
+        run: |
+          python benchmarks/compare_real_impls_fair.py \
+            --python-bin python \
+            --rscript-bin Rscript \
+            --warmup "$WARMUP" \
+            --repeats "$REPEATS" \
+            --large-max-samples "$LARGE_MAX_SAMPLES" \
+            --sample-cap-consistency "$SAMPLE_CAP_CONSISTENCY"
+      - name: Append report excerpt to job summary
+        run: |
+          echo '## Optimization-stage benchmark report excerpt' >> "$GITHUB_STEP_SUMMARY"
+          sed -n '1,120p' benchmarks/report_real_fair.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-benchmark-report
+          path: |
+            benchmarks/report_real_fair.md
+            benchmarks/report_real_fair.json
