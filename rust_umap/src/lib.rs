@@ -19,9 +19,22 @@ pub enum InitMethod {
     Spectral,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Metric {
+    Euclidean,
+    Manhattan,
+    Cosine,
+}
+
 impl Default for InitMethod {
     fn default() -> Self {
         Self::Spectral
+    }
+}
+
+impl Default for Metric {
+    fn default() -> Self {
+        Self::Euclidean
     }
 }
 
@@ -30,6 +43,7 @@ pub struct UmapParams {
     pub n_neighbors: usize,
     pub n_components: usize,
     pub n_epochs: Option<usize>,
+    pub metric: Metric,
     pub learning_rate: f32,
     pub min_dist: f32,
     pub spread: f32,
@@ -51,6 +65,7 @@ impl Default for UmapParams {
             n_neighbors: 15,
             n_components: 2,
             n_epochs: None,
+            metric: Metric::default(),
             learning_rate: 1.0,
             min_dist: 0.1,
             spread: 1.0,
@@ -174,19 +189,19 @@ impl UmapModel {
         let (n_samples, n_features) = validate_data(data)?;
         validate_params(&self.params, n_samples, n_features)?;
 
-        let (knn_indices, knn_dists) = if self.params.use_approximate_knn
-            && n_samples > self.params.approx_knn_threshold
-        {
-            approximate_nearest_neighbors(
-                data,
-                self.params.n_neighbors,
-                self.params.approx_knn_candidates,
-                self.params.approx_knn_iters,
-                self.params.random_seed ^ 0xC0FE_FEED_1234_ABCD,
-            )
-        } else {
-            exact_nearest_neighbors(data, self.params.n_neighbors)
-        };
+        let (knn_indices, knn_dists) =
+            if self.params.use_approximate_knn && n_samples > self.params.approx_knn_threshold {
+                approximate_nearest_neighbors(
+                    data,
+                    self.params.n_neighbors,
+                    self.params.metric,
+                    self.params.approx_knn_candidates,
+                    self.params.approx_knn_iters,
+                    self.params.random_seed ^ 0xC0FE_FEED_1234_ABCD,
+                )
+            } else {
+                exact_nearest_neighbors(data, self.params.n_neighbors, self.params.metric)
+            };
 
         self.fit_transform_with_knn_internal(data, &knn_indices, &knn_dists)
     }
@@ -260,12 +275,8 @@ impl UmapModel {
             DEFAULT_BANDWIDTH,
         );
 
-        let directed = compute_membership_strengths(
-            &knn_indices_trimmed,
-            &knn_dists_trimmed,
-            &sigmas,
-            &rhos,
-        );
+        let directed =
+            compute_membership_strengths(&knn_indices_trimmed, &knn_dists_trimmed, &sigmas, &rhos);
         let mut edges = symmetrize_fuzzy_graph(&directed, self.params.set_op_mix_ratio);
         prune_edges(&mut edges, n_epochs);
 
@@ -335,8 +346,12 @@ impl UmapModel {
             Some(e) => (e / 3).max(1),
         };
 
-        let (indices, dists) =
-            exact_nearest_neighbors_to_reference(query, train_data, n_neighbors);
+        let (indices, dists) = exact_nearest_neighbors_to_reference(
+            query,
+            train_data,
+            n_neighbors,
+            self.params.metric,
+        );
 
         let adjusted_local_connectivity = (self.params.local_connectivity - 1.0).max(0.0);
         let (sigmas, rhos) = smooth_knn_dist(
@@ -415,8 +430,12 @@ impl UmapModel {
             Some(e) => (e / 3).max(1),
         };
 
-        let (indices, dists) =
-            exact_nearest_neighbors_to_reference(embedded_query, train_embedding, n_neighbors);
+        let (indices, dists) = exact_nearest_neighbors_to_reference(
+            embedded_query,
+            train_embedding,
+            n_neighbors,
+            Metric::Euclidean,
+        );
 
         let mut graph_edges = Vec::with_capacity(embedded_query.len() * n_neighbors);
         let mut init_weights = vec![vec![0.0_f32; n_neighbors]; embedded_query.len()];
@@ -537,7 +556,9 @@ fn validate_params(
         ));
     }
     if params.spread <= 0.0 {
-        return Err(UmapError::InvalidParameter("spread must be > 0".to_string()));
+        return Err(UmapError::InvalidParameter(
+            "spread must be > 0".to_string(),
+        ));
     }
     if params.min_dist > params.spread {
         return Err(UmapError::InvalidParameter(
@@ -577,10 +598,12 @@ fn validate_params(
     Ok(())
 }
 
+#[inline(always)]
 fn euclidean_distance(x: &[f32], y: &[f32]) -> f32 {
     squared_distance(x, y).sqrt()
 }
 
+#[inline(always)]
 fn squared_distance(x: &[f32], y: &[f32]) -> f32 {
     x.iter()
         .zip(y.iter())
@@ -591,7 +614,46 @@ fn squared_distance(x: &[f32], y: &[f32]) -> f32 {
         .sum()
 }
 
-fn exact_nearest_neighbors(
+#[inline]
+fn manhattan_distance(x: &[f32], y: &[f32]) -> f32 {
+    x.iter().zip(y.iter()).map(|(a, b)| (a - b).abs()).sum()
+}
+
+#[allow(dead_code)]
+#[inline]
+fn cosine_distance(x: &[f32], y: &[f32]) -> f32 {
+    cosine_distance_with_norms(x, y, l2_norm(x), l2_norm(y))
+}
+
+#[inline]
+fn l2_norm(x: &[f32]) -> f32 {
+    x.iter().map(|v| v * v).sum::<f32>().sqrt()
+}
+
+#[inline]
+fn compute_l2_norms(data: &[Vec<f32>]) -> Vec<f32> {
+    data.iter().map(|row| l2_norm(row)).collect()
+}
+
+#[inline]
+fn cosine_distance_with_norms(x: &[f32], y: &[f32], x_norm: f32, y_norm: f32) -> f32 {
+    let mut dot = 0.0_f32;
+
+    for (&a, &b) in x.iter().zip(y.iter()) {
+        dot += a * b;
+    }
+
+    if x_norm == 0.0 && y_norm == 0.0 {
+        0.0
+    } else if x_norm == 0.0 || y_norm == 0.0 {
+        1.0
+    } else {
+        let cosine_sim = (dot / (x_norm * y_norm)).clamp(-1.0, 1.0);
+        1.0 - cosine_sim
+    }
+}
+
+fn exact_nearest_neighbors_euclidean(
     data: &[Vec<f32>],
     n_neighbors: usize,
 ) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
@@ -615,16 +677,83 @@ fn exact_nearest_neighbors(
     (indices, dists)
 }
 
-fn dedup_sorted_neighbors(
+fn exact_nearest_neighbors_cosine(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    let n_samples = data.len();
+    let norms = compute_l2_norms(data);
+    let mut indices = vec![vec![0_usize; n_neighbors]; n_samples];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; n_samples];
+
+    for i in 0..n_samples {
+        let mut row: Vec<(usize, f32)> = (0..n_samples)
+            .map(|j| {
+                (
+                    j,
+                    cosine_distance_with_norms(&data[i], &data[j], norms[i], norms[j]),
+                )
+            })
+            .collect();
+
+        row.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+        for (k, (j, d)) in row.into_iter().take(n_neighbors).enumerate() {
+            indices[i][k] = j;
+            dists[i][k] = d;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn exact_nearest_neighbors_by<F>(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+    distance_fn: F,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>)
+where
+    F: Fn(&[f32], &[f32]) -> f32 + Copy,
+{
+    let n_samples = data.len();
+    let mut indices = vec![vec![0_usize; n_neighbors]; n_samples];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; n_samples];
+
+    for i in 0..n_samples {
+        let mut row: Vec<(usize, f32)> = (0..n_samples)
+            .map(|j| (j, distance_fn(&data[i], &data[j])))
+            .collect();
+
+        row.sort_by(|a, b| a.1.total_cmp(&b.1));
+
+        for (k, (j, d)) in row.into_iter().take(n_neighbors).enumerate() {
+            indices[i][k] = j;
+            dists[i][k] = d;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn exact_nearest_neighbors(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+    metric: Metric,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    match metric {
+        Metric::Euclidean => exact_nearest_neighbors_euclidean(data, n_neighbors),
+        Metric::Manhattan => exact_nearest_neighbors_by(data, n_neighbors, manhattan_distance),
+        Metric::Cosine => exact_nearest_neighbors_cosine(data, n_neighbors),
+    }
+}
+
+fn dedup_sorted_neighbors_euclidean(
     mut pairs: Vec<(usize, f32)>,
     k: usize,
     all_points: &[Vec<f32>],
     row_point: &[f32],
 ) -> Vec<(usize, f32)> {
-    pairs.sort_by(|a, b| {
-        a.1.total_cmp(&b.1)
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    pairs.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
     let mut out = Vec::with_capacity(k);
     let mut seen = HashSet::with_capacity(k * 2);
@@ -646,17 +775,97 @@ fn dedup_sorted_neighbors(
                 }
             }
         }
-        out.sort_by(|a, b| {
-            a.1.total_cmp(&b.1)
-                .then_with(|| a.0.cmp(&b.0))
-        });
+        out.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
         out.truncate(k);
     }
 
     out
 }
 
-fn approximate_nearest_neighbors(
+fn dedup_sorted_neighbors_by<F>(
+    mut pairs: Vec<(usize, f32)>,
+    k: usize,
+    all_points: &[Vec<f32>],
+    row_point: &[f32],
+    distance_fn: F,
+) -> Vec<(usize, f32)>
+where
+    F: Fn(&[f32], &[f32]) -> f32 + Copy,
+{
+    pairs.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+
+    let mut out = Vec::with_capacity(k);
+    let mut seen = HashSet::with_capacity(k * 2);
+    for (idx, dist) in pairs {
+        if seen.insert(idx) {
+            out.push((idx, dist));
+            if out.len() == k {
+                break;
+            }
+        }
+    }
+
+    if out.len() < k {
+        for (idx, candidate) in all_points.iter().enumerate() {
+            if seen.insert(idx) {
+                out.push((idx, distance_fn(row_point, candidate)));
+                if out.len() == k {
+                    break;
+                }
+            }
+        }
+        out.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        out.truncate(k);
+    }
+
+    out
+}
+
+fn dedup_sorted_neighbors_cosine(
+    mut pairs: Vec<(usize, f32)>,
+    k: usize,
+    all_points: &[Vec<f32>],
+    all_norms: &[f32],
+    row_idx: usize,
+) -> Vec<(usize, f32)> {
+    pairs.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+
+    let mut out = Vec::with_capacity(k);
+    let mut seen = HashSet::with_capacity(k * 2);
+    for (idx, dist) in pairs {
+        if seen.insert(idx) {
+            out.push((idx, dist));
+            if out.len() == k {
+                break;
+            }
+        }
+    }
+
+    if out.len() < k {
+        for (idx, candidate) in all_points.iter().enumerate() {
+            if seen.insert(idx) {
+                out.push((
+                    idx,
+                    cosine_distance_with_norms(
+                        &all_points[row_idx],
+                        candidate,
+                        all_norms[row_idx],
+                        all_norms[idx],
+                    ),
+                ));
+                if out.len() == k {
+                    break;
+                }
+            }
+        }
+        out.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+        out.truncate(k);
+    }
+
+    out
+}
+
+fn approximate_nearest_neighbors_euclidean(
     data: &[Vec<f32>],
     n_neighbors: usize,
     candidate_pool: usize,
@@ -680,7 +889,7 @@ fn approximate_nearest_neighbors(
             .map(|j| (j, euclidean_distance(&data[i], &data[j])))
             .collect::<Vec<(usize, f32)>>();
 
-        neighbors.push(dedup_sorted_neighbors(
+        neighbors.push(dedup_sorted_neighbors_euclidean(
             candidates,
             n_neighbors,
             data,
@@ -719,7 +928,7 @@ fn approximate_nearest_neighbors(
                 .collect::<Vec<(usize, f32)>>();
 
             let updated =
-                dedup_sorted_neighbors(candidate_pairs, n_neighbors, data, &data[i]);
+                dedup_sorted_neighbors_euclidean(candidate_pairs, n_neighbors, data, &data[i]);
 
             if updated != neighbors[i] {
                 changed = true;
@@ -745,7 +954,237 @@ fn approximate_nearest_neighbors(
     (indices, dists)
 }
 
-fn exact_nearest_neighbors_to_reference(
+fn approximate_nearest_neighbors_by<F>(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+    candidate_pool: usize,
+    n_iters: usize,
+    seed: u64,
+    distance_fn: F,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>)
+where
+    F: Fn(&[f32], &[f32]) -> f32 + Copy,
+{
+    let n_samples = data.len();
+    let pool = candidate_pool.max(n_neighbors).min(n_samples - 1);
+    let mut rng = SmallRng::seed_from_u64(seed);
+
+    let mut neighbors: Vec<Vec<(usize, f32)>> = Vec::with_capacity(n_samples);
+    for i in 0..n_samples {
+        let mut sampled = HashSet::with_capacity(pool + 1);
+        sampled.insert(i);
+        while sampled.len() < pool + 1 {
+            sampled.insert(rng.gen_range(0..n_samples));
+        }
+
+        let candidates = sampled
+            .into_iter()
+            .map(|j| (j, distance_fn(&data[i], &data[j])))
+            .collect::<Vec<(usize, f32)>>();
+
+        neighbors.push(dedup_sorted_neighbors_by(
+            candidates,
+            n_neighbors,
+            data,
+            &data[i],
+            distance_fn,
+        ));
+    }
+
+    let max_candidates = candidate_pool.max(n_neighbors) * 4 + 1;
+
+    for _ in 0..n_iters {
+        let mut changed = false;
+        let mut next_neighbors = neighbors.clone();
+
+        for i in 0..n_samples {
+            let mut candidate_set = HashSet::with_capacity(max_candidates);
+            for (idx, _) in &neighbors[i] {
+                candidate_set.insert(*idx);
+                for (idx2, _) in &neighbors[*idx] {
+                    candidate_set.insert(*idx2);
+                }
+            }
+            candidate_set.insert(i);
+
+            let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
+            if candidate_vec.len() > max_candidates {
+                for s in 0..max_candidates {
+                    let r = rng.gen_range(s..candidate_vec.len());
+                    candidate_vec.swap(s, r);
+                }
+                candidate_vec.truncate(max_candidates);
+            }
+
+            let candidate_pairs = candidate_vec
+                .into_iter()
+                .map(|j| (j, distance_fn(&data[i], &data[j])))
+                .collect::<Vec<(usize, f32)>>();
+
+            let updated = dedup_sorted_neighbors_by(
+                candidate_pairs,
+                n_neighbors,
+                data,
+                &data[i],
+                distance_fn,
+            );
+
+            if updated != neighbors[i] {
+                changed = true;
+                next_neighbors[i] = updated;
+            }
+        }
+
+        neighbors = next_neighbors;
+        if !changed {
+            break;
+        }
+    }
+
+    let mut indices = vec![vec![0_usize; n_neighbors]; n_samples];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; n_samples];
+    for i in 0..n_samples {
+        for j in 0..n_neighbors {
+            indices[i][j] = neighbors[i][j].0;
+            dists[i][j] = neighbors[i][j].1;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn approximate_nearest_neighbors_cosine(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+    candidate_pool: usize,
+    n_iters: usize,
+    seed: u64,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    let n_samples = data.len();
+    let pool = candidate_pool.max(n_neighbors).min(n_samples - 1);
+    let mut rng = SmallRng::seed_from_u64(seed);
+    let norms = compute_l2_norms(data);
+
+    let mut neighbors: Vec<Vec<(usize, f32)>> = Vec::with_capacity(n_samples);
+    for i in 0..n_samples {
+        let mut sampled = HashSet::with_capacity(pool + 1);
+        sampled.insert(i);
+        while sampled.len() < pool + 1 {
+            sampled.insert(rng.gen_range(0..n_samples));
+        }
+
+        let candidates = sampled
+            .into_iter()
+            .map(|j| {
+                (
+                    j,
+                    cosine_distance_with_norms(&data[i], &data[j], norms[i], norms[j]),
+                )
+            })
+            .collect::<Vec<(usize, f32)>>();
+
+        neighbors.push(dedup_sorted_neighbors_cosine(
+            candidates,
+            n_neighbors,
+            data,
+            &norms,
+            i,
+        ));
+    }
+
+    let max_candidates = candidate_pool.max(n_neighbors) * 4 + 1;
+
+    for _ in 0..n_iters {
+        let mut changed = false;
+        let mut next_neighbors = neighbors.clone();
+
+        for i in 0..n_samples {
+            let mut candidate_set = HashSet::with_capacity(max_candidates);
+            for (idx, _) in &neighbors[i] {
+                candidate_set.insert(*idx);
+                for (idx2, _) in &neighbors[*idx] {
+                    candidate_set.insert(*idx2);
+                }
+            }
+            candidate_set.insert(i);
+
+            let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
+            if candidate_vec.len() > max_candidates {
+                for s in 0..max_candidates {
+                    let r = rng.gen_range(s..candidate_vec.len());
+                    candidate_vec.swap(s, r);
+                }
+                candidate_vec.truncate(max_candidates);
+            }
+
+            let candidate_pairs = candidate_vec
+                .into_iter()
+                .map(|j| {
+                    (
+                        j,
+                        cosine_distance_with_norms(&data[i], &data[j], norms[i], norms[j]),
+                    )
+                })
+                .collect::<Vec<(usize, f32)>>();
+
+            let updated =
+                dedup_sorted_neighbors_cosine(candidate_pairs, n_neighbors, data, &norms, i);
+
+            if updated != neighbors[i] {
+                changed = true;
+                next_neighbors[i] = updated;
+            }
+        }
+
+        neighbors = next_neighbors;
+        if !changed {
+            break;
+        }
+    }
+
+    let mut indices = vec![vec![0_usize; n_neighbors]; n_samples];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; n_samples];
+    for i in 0..n_samples {
+        for j in 0..n_neighbors {
+            indices[i][j] = neighbors[i][j].0;
+            dists[i][j] = neighbors[i][j].1;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn approximate_nearest_neighbors(
+    data: &[Vec<f32>],
+    n_neighbors: usize,
+    metric: Metric,
+    candidate_pool: usize,
+    n_iters: usize,
+    seed: u64,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    match metric {
+        Metric::Euclidean => approximate_nearest_neighbors_euclidean(
+            data,
+            n_neighbors,
+            candidate_pool,
+            n_iters,
+            seed,
+        ),
+        Metric::Manhattan => approximate_nearest_neighbors_by(
+            data,
+            n_neighbors,
+            candidate_pool,
+            n_iters,
+            seed,
+            manhattan_distance,
+        ),
+        Metric::Cosine => {
+            approximate_nearest_neighbors_cosine(data, n_neighbors, candidate_pool, n_iters, seed)
+        }
+    }
+}
+
+fn exact_nearest_neighbors_to_reference_euclidean(
     query: &[Vec<f32>],
     reference: &[Vec<f32>],
     n_neighbors: usize,
@@ -760,7 +1199,7 @@ fn exact_nearest_neighbors_to_reference(
             .map(|(j, y)| (j, euclidean_distance(x, y)))
             .collect();
 
-        row.sort_by(|a, b| a.1.total_cmp(&b.1));
+        row.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
 
         for (k, (j, d)) in row.into_iter().take(n_neighbors).enumerate() {
             indices[i][k] = j;
@@ -769,6 +1208,91 @@ fn exact_nearest_neighbors_to_reference(
     }
 
     (indices, dists)
+}
+
+fn exact_nearest_neighbors_to_reference_by<F>(
+    query: &[Vec<f32>],
+    reference: &[Vec<f32>],
+    n_neighbors: usize,
+    distance_fn: F,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>)
+where
+    F: Fn(&[f32], &[f32]) -> f32 + Copy,
+{
+    let mut indices = vec![vec![0_usize; n_neighbors]; query.len()];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; query.len()];
+
+    for (i, x) in query.iter().enumerate() {
+        let mut row: Vec<(usize, f32)> = reference
+            .iter()
+            .enumerate()
+            .map(|(j, y)| (j, distance_fn(x, y)))
+            .collect();
+
+        row.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+
+        for (k, (j, d)) in row.into_iter().take(n_neighbors).enumerate() {
+            indices[i][k] = j;
+            dists[i][k] = d;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn exact_nearest_neighbors_to_reference_cosine(
+    query: &[Vec<f32>],
+    reference: &[Vec<f32>],
+    n_neighbors: usize,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    let query_norms = compute_l2_norms(query);
+    let ref_norms = compute_l2_norms(reference);
+    let mut indices = vec![vec![0_usize; n_neighbors]; query.len()];
+    let mut dists = vec![vec![0.0_f32; n_neighbors]; query.len()];
+
+    for (i, x) in query.iter().enumerate() {
+        let mut row: Vec<(usize, f32)> = reference
+            .iter()
+            .enumerate()
+            .map(|(j, y)| {
+                (
+                    j,
+                    cosine_distance_with_norms(x, y, query_norms[i], ref_norms[j]),
+                )
+            })
+            .collect();
+
+        row.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+
+        for (k, (j, d)) in row.into_iter().take(n_neighbors).enumerate() {
+            indices[i][k] = j;
+            dists[i][k] = d;
+        }
+    }
+
+    (indices, dists)
+}
+
+fn exact_nearest_neighbors_to_reference(
+    query: &[Vec<f32>],
+    reference: &[Vec<f32>],
+    n_neighbors: usize,
+    metric: Metric,
+) -> (Vec<Vec<usize>>, Vec<Vec<f32>>) {
+    match metric {
+        Metric::Euclidean => {
+            exact_nearest_neighbors_to_reference_euclidean(query, reference, n_neighbors)
+        }
+        Metric::Manhattan => exact_nearest_neighbors_to_reference_by(
+            query,
+            reference,
+            n_neighbors,
+            manhattan_distance,
+        ),
+        Metric::Cosine => {
+            exact_nearest_neighbors_to_reference_cosine(query, reference, n_neighbors)
+        }
+    }
 }
 
 fn smooth_knn_dist(
@@ -798,11 +1322,7 @@ fn smooth_knn_dist(
     for i in 0..n_samples {
         let ith_distances = &distances[i];
 
-        let non_zero_dists: Vec<f32> = ith_distances
-            .iter()
-            .copied()
-            .filter(|d| *d > 0.0)
-            .collect();
+        let non_zero_dists: Vec<f32> = ith_distances.iter().copied().filter(|d| *d > 0.0).collect();
 
         if non_zero_dists.len() as f32 >= local_connectivity {
             let index = local_connectivity.floor() as usize;
@@ -1191,11 +1711,7 @@ fn spectral_init_connected(
 
     noisy_scale_coords(&mut coords, seed ^ 0x5DEECE66D, INIT_MAX_COORD, INIT_NOISE);
 
-    if coords
-        .iter()
-        .flat_map(|r| r.iter())
-        .all(|v| v.is_finite())
-    {
+    if coords.iter().flat_map(|r| r.iter()).all(|v| v.is_finite()) {
         Some(coords)
     } else {
         None
@@ -1795,10 +2311,9 @@ fn optimize_layout_training(
                 continue;
             }
 
-            let n_neg_samples =
-                ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
-                    .floor()
-                    .max(0.0) as usize;
+            let n_neg_samples = ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
+                .floor()
+                .max(0.0) as usize;
 
             for _ in 0..n_neg_samples {
                 let neg_idx = rng.gen_range(0..n_vertices);
@@ -1810,8 +2325,7 @@ fn optimize_layout_training(
 
                 let grad_coeff = if dist_squared > 0.0 {
                     let dist_pow_b = dist_squared.powf(b);
-                    2.0 * repulsion_strength * b
-                        / ((0.001 + dist_squared) * (a * dist_pow_b + 1.0))
+                    2.0 * repulsion_strength * b / ((0.001 + dist_squared) * (a * dist_pow_b + 1.0))
                 } else {
                     0.0
                 };
@@ -1901,10 +2415,9 @@ fn optimize_layout_transform(
                 continue;
             }
 
-            let n_neg_samples =
-                ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
-                    .floor()
-                    .max(0.0) as usize;
+            let n_neg_samples = ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
+                .floor()
+                .max(0.0) as usize;
 
             for _ in 0..n_neg_samples {
                 let neg_idx = rng.gen_range(0..n_vertices);
@@ -1912,8 +2425,7 @@ fn optimize_layout_transform(
                 let dist_squared = squared_distance(&embedding[head], &base_embedding[neg_idx]);
                 let grad_coeff = if dist_squared > 0.0 {
                     let dist_pow_b = dist_squared.powf(b);
-                    2.0 * repulsion_strength * b
-                        / ((0.001 + dist_squared) * (a * dist_pow_b + 1.0))
+                    2.0 * repulsion_strength * b / ((0.001 + dist_squared) * (a * dist_pow_b + 1.0))
                 } else {
                     0.0
                 };
@@ -2000,20 +2512,18 @@ fn optimize_layout_inverse(
                 continue;
             }
 
-            let n_neg_samples =
-                ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
-                    .floor()
-                    .max(0.0) as usize;
+            let n_neg_samples = ((epoch as f32 - epoch_of_next_negative_sample[edge_idx]) / eps_neg)
+                .floor()
+                .max(0.0) as usize;
 
             for _ in 0..n_neg_samples {
                 let neg_tail = rng.gen_range(0..n_vertices);
                 let (dist_neg, grad_neg) =
                     euclidean_distance_with_grad(&head_embedding[head], &tail_embedding[neg_tail]);
 
-                let wh =
-                    (-(dist_neg - rhos[neg_tail]).max(1e-6) / (sigmas[neg_tail] + 1e-6)).exp();
-                let grad_coeff = -repulsion_strength
-                    * ((0.0 - wh) / ((1.0 - wh) * sigmas[neg_tail] + 1e-6));
+                let wh = (-(dist_neg - rhos[neg_tail]).max(1e-6) / (sigmas[neg_tail] + 1e-6)).exp();
+                let grad_coeff =
+                    -repulsion_strength * ((0.0 - wh) / ((1.0 - wh) * sigmas[neg_tail] + 1e-6));
 
                 {
                     let current = &mut head_embedding[head];
@@ -2205,6 +2715,15 @@ mod tests {
             .sqrt()
     }
 
+    fn assert_all_finite(points: &[Vec<f32>]) {
+        assert!(
+            points
+                .iter()
+                .flat_map(|row| row.iter())
+                .all(|v| v.is_finite())
+        );
+    }
+
     #[test]
     fn fit_transform_returns_expected_shape_and_finite_values() {
         let data = synthetic_data(80, 8);
@@ -2218,16 +2737,13 @@ mod tests {
         };
 
         let mut model = UmapModel::new(params);
-        let embedding = model.fit_transform(&data).expect("fit_transform should succeed");
+        let embedding = model
+            .fit_transform(&data)
+            .expect("fit_transform should succeed");
 
         assert_eq!(embedding.len(), 80);
         assert_eq!(embedding[0].len(), 2);
-
-        for row in &embedding {
-            for &v in row {
-                assert!(v.is_finite());
-            }
-        }
+        assert_all_finite(&embedding);
     }
 
     #[test]
@@ -2272,10 +2788,7 @@ mod tests {
         let transformed = model.transform(&query).expect("transform should succeed");
         assert_eq!(transformed.len(), 15);
         assert_eq!(transformed[0].len(), 2);
-        assert!(transformed
-            .iter()
-            .flat_map(|r| r.iter())
-            .all(|v| v.is_finite()));
+        assert_all_finite(&transformed);
     }
 
     #[test]
@@ -2308,10 +2821,7 @@ mod tests {
 
         assert_eq!(reconstructed.len(), emb_query.len());
         assert_eq!(reconstructed[0].len(), 6);
-        assert!(reconstructed
-            .iter()
-            .flat_map(|r| r.iter())
-            .all(|v| v.is_finite()));
+        assert_all_finite(&reconstructed);
     }
 
     #[test]
@@ -2341,13 +2851,93 @@ mod tests {
         };
 
         let mut model = UmapModel::new(params);
-        let embedding = model.fit_transform(&data).expect("fit should succeed on ANN path");
+        let embedding = model
+            .fit_transform(&data)
+            .expect("fit should succeed on ANN path");
         assert_eq!(embedding.len(), 90);
         assert_eq!(embedding[0].len(), 2);
-        assert!(embedding
-            .iter()
-            .flat_map(|r| r.iter())
-            .all(|v| v.is_finite()));
+        assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn fit_transform_supports_manhattan_metric() {
+        let data = synthetic_data(96, 8);
+        let params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(60),
+            metric: Metric::Manhattan,
+            init: InitMethod::Random,
+            random_seed: 321,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform(&data)
+            .expect("fit should succeed for manhattan metric");
+
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn approximate_knn_path_supports_cosine_metric() {
+        let data = synthetic_data(84, 10);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Cosine,
+            init: InitMethod::Random,
+            random_seed: 222,
+            use_approximate_knn: true,
+            approx_knn_candidates: 24,
+            approx_knn_iters: 6,
+            approx_knn_threshold: 0,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform(&data)
+            .expect("fit should succeed for cosine ANN path");
+
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn precomputed_cosine_knn_matches_direct_fit() {
+        let data = synthetic_data(72, 7);
+        let params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Cosine,
+            init: InitMethod::Random,
+            random_seed: 444,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut direct_model = UmapModel::new(params.clone());
+        let direct_embedding = direct_model
+            .fit_transform(&data)
+            .expect("direct cosine fit should succeed");
+
+        let (knn_indices, knn_dists) =
+            exact_nearest_neighbors(&data, params.n_neighbors, params.metric);
+        let mut precomputed_model = UmapModel::new(params);
+        let precomputed_embedding = precomputed_model
+            .fit_transform_with_knn(&data, &knn_indices, &knn_dists)
+            .expect("precomputed cosine fit should succeed");
+
+        assert_eq!(direct_embedding, precomputed_embedding);
+        assert_all_finite(&precomputed_embedding);
     }
 
     #[test]

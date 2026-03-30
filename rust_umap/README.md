@@ -4,8 +4,8 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 
 ## What is implemented
 
-- KNN search (Euclidean):
-  - Exact all-pairs baseline
+- KNN search with multiple metrics:
+  - Exact all-pairs baseline for `euclidean`, `manhattan`/`l1`, and `cosine`
   - Optional NN-Descent-style approximate mode for larger datasets
 - Smooth KNN distance estimation (`sigma`, `rho`) with binary search
 - Fuzzy simplicial set construction and symmetric fuzzy union
@@ -21,13 +21,16 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 - New point embedding API:
   - `transform`
 - Approximate inverse mapping API:
-  - `inverse_transform` (Euclidean metric)
+  - `inverse_transform` (Euclidean metric in embedding space)
   - Exact training-embedding lookups are mapped back to their original samples
+- CLI utilities:
+  - `fit_csv`
+  - `bench_fit_csv`
+  - optional `--metric euclidean|manhattan|cosine`
 
 ## What is intentionally out of scope (for this version)
 
 - Full `pynndescent`-equivalent ANN quality/performance parity
-- Non-Euclidean metrics
 - Sparse input support
 
 ## Quick start
@@ -50,10 +53,28 @@ Repository automation keeps benchmark validation staged in this order:
 
 The Rust crate remains the unit under test in all three stages.
 
+For CSV-driven runs:
+
+```bash
+cargo run --release --bin fit_csv -- \
+  data.csv embedding.csv \
+  15 2 200 42 spectral false 30 10 4096 fit \
+  --metric cosine
+```
+
+To benchmark repeated fits:
+
+```bash
+cargo run --release --bin bench_fit_csv -- \
+  data.csv embedding.csv \
+  15 2 200 42 spectral false 30 10 4096 1 5 \
+  --metric manhattan
+```
+
 ## Minimal library usage
 
 ```rust
-use rust_umap::{InitMethod, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
 
 let data: Vec<Vec<f32>> = vec![
     vec![0.0, 0.1, 0.2],
@@ -63,6 +84,7 @@ let data: Vec<Vec<f32>> = vec![
 
 let mut model = UmapModel::new(UmapParams {
     init: InitMethod::Spectral,
+    metric: Metric::Cosine,
     ..UmapParams::default()
 });
 
