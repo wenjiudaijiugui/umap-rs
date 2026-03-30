@@ -270,7 +270,7 @@ impl UmapModel {
         prune_edges(&mut edges, n_epochs);
 
         let mut embedding = initialize_embedding(
-            n_samples,
+            data,
             self.params.n_components,
             &edges,
             self.params.init,
@@ -990,20 +990,109 @@ fn random_init(
 }
 
 fn initialize_embedding(
-    n_samples: usize,
+    data: &[Vec<f32>],
     n_components: usize,
     edges: &[Edge],
     init: InitMethod,
     seed: u64,
 ) -> Vec<Vec<f32>> {
+    let n_samples = data.len();
     match init {
         InitMethod::Random => random_init(n_samples, n_components, seed, -10.0, 10.0),
-        InitMethod::Spectral => spectral_init(n_samples, n_components, edges, seed)
+        InitMethod::Spectral => spectral_init(data, n_components, edges, seed)
             .unwrap_or_else(|| random_init(n_samples, n_components, seed, -10.0, 10.0)),
     }
 }
 
 fn spectral_init(
+    data: &[Vec<f32>],
+    n_components: usize,
+    edges: &[Edge],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let n_samples = data.len();
+    if n_samples <= n_components + 1 || edges.is_empty() {
+        return None;
+    }
+
+    let components = connected_components_from_edges(n_samples, edges);
+    if components.len() > 1 {
+        return multi_component_spectral_init(data, n_components, edges, &components, seed);
+    }
+
+    spectral_init_connected(n_samples, n_components, edges, seed)
+}
+
+fn spectral_embedding_from_affinity_raw(
+    affinity: &[Vec<f64>],
+    embedding_dim: usize,
+    drop_first: bool,
+) -> Option<Vec<Vec<f32>>> {
+    let n_samples = affinity.len();
+    if n_samples == 0 {
+        return None;
+    }
+    if affinity.iter().any(|row| row.len() != n_samples) {
+        return None;
+    }
+
+    let mut degrees = vec![0.0_f64; n_samples];
+    for i in 0..n_samples {
+        degrees[i] = affinity[i].iter().sum();
+    }
+    if degrees.iter().all(|degree| *degree <= 0.0) {
+        return None;
+    }
+
+    let mut laplacian = DMatrix::<f64>::identity(n_samples, n_samples);
+    for i in 0..n_samples {
+        if degrees[i] <= 0.0 {
+            continue;
+        }
+        for j in 0..n_samples {
+            if degrees[j] <= 0.0 {
+                continue;
+            }
+            let weight = affinity[i][j];
+            if weight > 0.0 {
+                laplacian[(i, j)] -= weight / (degrees[i].sqrt() * degrees[j].sqrt());
+            }
+        }
+    }
+
+    let eig = SymmetricEigen::new(laplacian);
+    let mut order: Vec<usize> = (0..n_samples).collect();
+    order.sort_by(|&i, &j| {
+        eig.eigenvalues[i]
+            .partial_cmp(&eig.eigenvalues[j])
+            .unwrap_or(Ordering::Equal)
+    });
+
+    let offset = usize::from(drop_first);
+    if order.len() <= embedding_dim + offset {
+        return None;
+    }
+
+    let mut coords = vec![vec![0.0_f32; embedding_dim]; n_samples];
+    for out_col in 0..embedding_dim {
+        let eig_col = order[out_col + offset];
+        for row in 0..n_samples {
+            coords[row][out_col] = eig.eigenvectors[(row, eig_col)] as f32;
+        }
+    }
+
+    if coords
+        .iter()
+        .flat_map(|row| row.iter())
+        .all(|value| value.is_finite())
+    {
+        Some(coords)
+    } else {
+        None
+    }
+}
+
+fn spectral_init_connected(
     n_samples: usize,
     n_components: usize,
     edges: &[Edge],
@@ -1042,8 +1131,7 @@ fn spectral_init(
         }
         degrees[i] = sum;
     }
-
-    if degrees.iter().all(|d| *d <= 0.0) {
+    if degrees.iter().all(|degree| *degree <= 0.0) {
         return None;
     }
 
@@ -1064,7 +1152,6 @@ fn spectral_init(
     }
 
     let eig = SymmetricEigen::new(laplacian);
-
     let mut order: Vec<usize> = (0..n_samples).collect();
     order.sort_by(|&i, &j| {
         eig.eigenvalues[i]
@@ -1092,6 +1179,308 @@ fn spectral_init(
         .all(|v| v.is_finite())
     {
         Some(coords)
+    } else {
+        None
+    }
+}
+
+fn connected_components_from_edges(n_samples: usize, edges: &[Edge]) -> Vec<Vec<usize>> {
+    let mut parent = (0..n_samples).collect::<Vec<usize>>();
+    let mut rank = vec![0_u8; n_samples];
+
+    fn find(parent: &mut [usize], x: usize) -> usize {
+        let mut root = x;
+        while parent[root] != root {
+            root = parent[root];
+        }
+        let mut node = x;
+        while parent[node] != root {
+            let next = parent[node];
+            parent[node] = root;
+            node = next;
+        }
+        root
+    }
+
+    fn union(parent: &mut [usize], rank: &mut [u8], a: usize, b: usize) {
+        let root_a = find(parent, a);
+        let root_b = find(parent, b);
+        if root_a == root_b {
+            return;
+        }
+        if rank[root_a] < rank[root_b] {
+            parent[root_a] = root_b;
+        } else if rank[root_a] > rank[root_b] {
+            parent[root_b] = root_a;
+        } else {
+            parent[root_b] = root_a;
+            rank[root_a] += 1;
+        }
+    }
+
+    for edge in edges {
+        if edge.head != edge.tail {
+            union(&mut parent, &mut rank, edge.head, edge.tail);
+        }
+    }
+
+    let mut groups = HashMap::<usize, Vec<usize>>::new();
+    for node in 0..n_samples {
+        let root = find(&mut parent, node);
+        groups.entry(root).or_default().push(node);
+    }
+
+    let mut components = groups.into_values().collect::<Vec<Vec<usize>>>();
+    for component in components.iter_mut() {
+        component.sort_unstable();
+    }
+    components.sort_by_key(|component| component[0]);
+    components
+}
+
+fn remap_component_edges(
+    component: &[usize],
+    component_labels: &[usize],
+    component_id: usize,
+    edges: &[Edge],
+) -> Vec<Edge> {
+    let mut mapping = vec![usize::MAX; component_labels.len()];
+    for (local_idx, &global_idx) in component.iter().enumerate() {
+        mapping[global_idx] = local_idx;
+    }
+
+    let mut out = Vec::new();
+    for edge in edges {
+        if component_labels[edge.head] == component_id && component_labels[edge.tail] == component_id {
+            out.push(Edge {
+                head: mapping[edge.head],
+                tail: mapping[edge.tail],
+                weight: edge.weight,
+            });
+        }
+    }
+    out
+}
+
+fn component_centroids(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<f64>> {
+    let n_features = data[0].len();
+    let mut centroids = Vec::with_capacity(components.len());
+
+    for component in components {
+        let mut centroid = vec![0.0_f64; n_features];
+        for &idx in component {
+            for (feature_idx, &value) in data[idx].iter().enumerate() {
+                centroid[feature_idx] += value as f64;
+            }
+        }
+        let scale = 1.0 / component.len() as f64;
+        for value in centroid.iter_mut() {
+            *value *= scale;
+        }
+        centroids.push(centroid);
+    }
+
+    centroids
+}
+
+fn squared_distance_f64(x: &[f64], y: &[f64]) -> f64 {
+    x.iter()
+        .zip(y.iter())
+        .map(|(a, b)| {
+            let d = a - b;
+            d * d
+        })
+        .sum()
+}
+
+fn meta_component_layout(
+    data: &[Vec<f32>],
+    embedding_dim: usize,
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let n_graph_components = components.len();
+    if n_graph_components == 0 {
+        return None;
+    }
+    if n_graph_components == 1 {
+        return Some(vec![vec![0.0; embedding_dim]]);
+    }
+
+    if n_graph_components <= 2 * embedding_dim {
+        let k = n_graph_components.div_ceil(2);
+        let mut layout = vec![vec![0.0_f32; embedding_dim]; n_graph_components];
+        for i in 0..n_graph_components {
+            let axis = i % k;
+            layout[i][axis] = if i < k { 1.0 } else { -1.0 };
+        }
+        return Some(layout);
+    }
+
+    let centroids = component_centroids(data, components);
+    let mut affinity = vec![vec![0.0_f64; n_graph_components]; n_graph_components];
+    for i in 0..n_graph_components {
+        affinity[i][i] = 1.0;
+        for j in (i + 1)..n_graph_components {
+            let dist2 = squared_distance_f64(&centroids[i], &centroids[j]);
+            let weight = (-dist2).exp();
+            affinity[i][j] = weight;
+            affinity[j][i] = weight;
+        }
+    }
+
+    spectral_embedding_from_affinity(&affinity, embedding_dim, true, seed ^ 0xC85E_7D6A_DA31_8F21)
+}
+
+fn spectral_embedding_from_affinity(
+    affinity: &[Vec<f64>],
+    embedding_dim: usize,
+    drop_first: bool,
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let mut coords = spectral_embedding_from_affinity_raw(affinity, embedding_dim, drop_first)?;
+    noisy_scale_coords(&mut coords, seed, INIT_MAX_COORD, INIT_NOISE);
+    if coords
+        .iter()
+        .flat_map(|row| row.iter())
+        .all(|value| value.is_finite())
+    {
+        Some(coords)
+    } else {
+        None
+    }
+}
+
+fn spectral_init_connected_raw(
+    n_samples: usize,
+    n_components: usize,
+    edges: &[Edge],
+) -> Option<Vec<Vec<f32>>> {
+    if n_samples <= n_components + 1 || edges.is_empty() {
+        return None;
+    }
+
+    let mut affinity = vec![vec![0.0_f64; n_samples]; n_samples];
+    for edge in edges {
+        if edge.head == edge.tail {
+            continue;
+        }
+        let i = edge.head;
+        let j = edge.tail;
+        let weight = edge.weight.max(0.0) as f64;
+        if weight > affinity[i][j] {
+            affinity[i][j] = weight;
+        }
+    }
+    for i in 0..n_samples {
+        for j in (i + 1)..n_samples {
+            let sym = affinity[i][j].max(affinity[j][i]);
+            affinity[i][j] = sym;
+            affinity[j][i] = sym;
+        }
+    }
+
+    spectral_embedding_from_affinity_raw(&affinity, n_components, true)
+}
+
+fn add_noise(coords: &mut [Vec<f32>], seed: u64, noise: f32) {
+    if coords.is_empty() || coords[0].is_empty() {
+        return;
+    }
+
+    let normal = Normal::new(0.0_f64, noise as f64).expect("normal distribution should be valid");
+    let mut rng = SmallRng::seed_from_u64(seed);
+    for row in coords.iter_mut() {
+        for value in row.iter_mut() {
+            *value += normal.sample(&mut rng) as f32;
+        }
+    }
+}
+
+fn multi_component_spectral_init(
+    data: &[Vec<f32>],
+    embedding_dim: usize,
+    edges: &[Edge],
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let n_samples = data.len();
+    let mut component_labels = vec![usize::MAX; n_samples];
+    for (component_id, component) in components.iter().enumerate() {
+        for &idx in component {
+            component_labels[idx] = component_id;
+        }
+    }
+
+    let component_layout =
+        meta_component_layout(data, embedding_dim, components, seed ^ 0xA13F_52A9_2D4C_B801)?;
+    let mut result = vec![vec![0.0_f32; embedding_dim]; n_samples];
+
+    for (component_id, component) in components.iter().enumerate() {
+        let anchor = &component_layout[component_id];
+        let mut data_range = f32::INFINITY;
+        for (other_id, other_anchor) in component_layout.iter().enumerate() {
+            if other_id == component_id {
+                continue;
+            }
+            let dist = euclidean_distance(anchor, other_anchor);
+            if dist > 0.0 {
+                data_range = data_range.min(dist / 2.0);
+            }
+        }
+        if !data_range.is_finite() || data_range <= 0.0 {
+            data_range = 1.0;
+        }
+
+        let local_coords = if component.len() < 2 * embedding_dim || component.len() <= embedding_dim + 1 {
+            random_init(
+                component.len(),
+                embedding_dim,
+                seed ^ ((component_id as u64 + 1) * 0x9E37_79B9),
+                -data_range,
+                data_range,
+            )
+        } else {
+            let component_edges =
+                remap_component_edges(component, &component_labels, component_id, edges);
+            let mut coords =
+                spectral_init_connected_raw(component.len(), embedding_dim, &component_edges)?;
+            let max_abs = coords
+                .iter()
+                .flat_map(|row| row.iter())
+                .map(|value| value.abs())
+                .fold(0.0_f32, f32::max);
+            let expansion = if max_abs > 0.0 {
+                data_range / max_abs
+            } else {
+                1.0
+            };
+            for row in coords.iter_mut() {
+                for value in row.iter_mut() {
+                    *value *= expansion;
+                }
+            }
+            add_noise(
+                &mut coords,
+                seed ^ ((component_id as u64 + 1) * 0x94D0_49BB),
+                INIT_NOISE,
+            );
+            coords
+        };
+
+        for (local_idx, &global_idx) in component.iter().enumerate() {
+            for dim in 0..embedding_dim {
+                result[global_idx][dim] = local_coords[local_idx][dim] + anchor[dim];
+            }
+        }
+    }
+
+    if result
+        .iter()
+        .flat_map(|row| row.iter())
+        .all(|value| value.is_finite())
+    {
+        Some(result)
     } else {
         None
     }
@@ -1632,6 +2021,77 @@ mod tests {
         data
     }
 
+    fn disconnected_component_data(
+        n_components: usize,
+        points_per_component: usize,
+    ) -> (Vec<Vec<f32>>, Vec<usize>) {
+        let mut data = Vec::with_capacity(n_components * points_per_component);
+        let mut labels = Vec::with_capacity(n_components * points_per_component);
+
+        for component in 0..n_components {
+            let shift = component as f32 * 50.0;
+            for point_idx in 0..points_per_component {
+                let t =
+                    2.0 * std::f32::consts::PI * point_idx as f32 / points_per_component as f32;
+                data.push(vec![
+                    shift + t.cos(),
+                    t.sin(),
+                    (2.0 * t).cos(),
+                    (2.0 * t).sin(),
+                    -1.0 + 2.0 * point_idx as f32 / points_per_component as f32,
+                    component as f32 * 0.1,
+                    0.0,
+                    0.0,
+                ]);
+                labels.push(component);
+            }
+        }
+
+        (data, labels)
+    }
+
+    fn component_centroid(embedding: &[Vec<f32>], labels: &[usize], component: usize) -> Vec<f32> {
+        let dim = embedding[0].len();
+        let mut centroid = vec![0.0_f32; dim];
+        let mut count = 0.0_f32;
+        for (row, &label) in embedding.iter().zip(labels.iter()) {
+            if label == component {
+                count += 1.0;
+                for (dim_idx, &value) in row.iter().enumerate() {
+                    centroid[dim_idx] += value;
+                }
+            }
+        }
+        for value in centroid.iter_mut() {
+            *value /= count;
+        }
+        centroid
+    }
+
+    fn component_std_norm(embedding: &[Vec<f32>], labels: &[usize], component: usize) -> f32 {
+        let centroid = component_centroid(embedding, labels, component);
+        let dim = embedding[0].len();
+        let mut variances = vec![0.0_f32; dim];
+        let mut count = 0.0_f32;
+
+        for (row, &label) in embedding.iter().zip(labels.iter()) {
+            if label == component {
+                count += 1.0;
+                for dim_idx in 0..dim {
+                    let diff = row[dim_idx] - centroid[dim_idx];
+                    variances[dim_idx] += diff * diff;
+                }
+            }
+        }
+
+        variances
+            .iter()
+            .map(|sum_sq| (sum_sq / count).sqrt())
+            .map(|std| std * std)
+            .sum::<f32>()
+            .sqrt()
+    }
+
     #[test]
     fn fit_transform_returns_expected_shape_and_finite_values() {
         let data = synthetic_data(80, 8);
@@ -1775,5 +2235,53 @@ mod tests {
             .iter()
             .flat_map(|r| r.iter())
             .all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn spectral_init_handles_disconnected_components() {
+        let (data, labels) = disconnected_component_data(4, 40);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(0),
+            init: InitMethod::Spectral,
+            random_seed: 42,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model.fit_transform(&data).expect("fit should succeed");
+
+        let component_std_mins = (0..4)
+            .map(|component| component_std_norm(&embedding, &labels, component))
+            .collect::<Vec<f32>>();
+        let component_centroids = (0..4)
+            .map(|component| component_centroid(&embedding, &labels, component))
+            .collect::<Vec<Vec<f32>>>();
+
+        let mut min_centroid_distance = f32::INFINITY;
+        for i in 0..component_centroids.len() {
+            for j in (i + 1)..component_centroids.len() {
+                min_centroid_distance = min_centroid_distance.min(euclidean_distance(
+                    &component_centroids[i],
+                    &component_centroids[j],
+                ));
+            }
+        }
+
+        let min_component_std = component_std_mins
+            .iter()
+            .copied()
+            .fold(f32::INFINITY, f32::min);
+
+        assert!(
+            min_component_std > 0.01,
+            "expected each disconnected component to keep internal spread, got {min_component_std}"
+        );
+        assert!(
+            min_centroid_distance > 0.5,
+            "expected disconnected component centroids to remain separated, got {min_centroid_distance}"
+        );
     }
 }
