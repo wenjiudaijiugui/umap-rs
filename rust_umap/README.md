@@ -22,6 +22,7 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
   - `transform`
 - Approximate inverse mapping API:
   - `inverse_transform` (Euclidean metric)
+  - Exact training-embedding lookups are mapped back to their original samples
 
 ## What is intentionally out of scope (for this version)
 
@@ -75,3 +76,12 @@ let reconstructed = model.inverse_transform(&transformed)?;
 
 The core equations for graph construction and layout optimization are aligned with standard UMAP behavior.
 This implementation prioritizes clarity and reproducibility over large-scale performance.
+
+## Inverse benchmark helpers
+
+For inverse-transform quality and Euclidean fit no-regression checks:
+
+```bash
+python rust_umap/benchmarks/eval_inverse_quality.py --dataset all
+python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all
+```
