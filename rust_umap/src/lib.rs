@@ -419,12 +419,17 @@ impl UmapModel {
             exact_nearest_neighbors_to_reference(embedded_query, train_embedding, n_neighbors);
 
         let mut graph_edges = Vec::with_capacity(embedded_query.len() * n_neighbors);
+        let mut init_weights = vec![vec![0.0_f32; n_neighbors]; embedded_query.len()];
+        let mut fixed_rows = vec![false; embedded_query.len()];
         for i in 0..embedded_query.len() {
+            let mut row_sum = 0.0_f32;
             for j in 0..n_neighbors {
                 let tail = indices[i][j];
                 let dist = dists[i][j];
                 let weight = 1.0 / (1.0 + self.a * dist.powf(2.0 * self.b));
                 if weight > 0.0 && weight.is_finite() {
+                    init_weights[i][j] = weight;
+                    row_sum += weight;
                     graph_edges.push(Edge {
                         head: i,
                         tail,
@@ -432,15 +437,28 @@ impl UmapModel {
                     });
                 }
             }
+            if row_sum > 0.0 {
+                for w in init_weights[i].iter_mut() {
+                    *w /= row_sum;
+                }
+            }
+            fixed_rows[i] = dists[i][0] <= 1e-6;
         }
 
-        let mut inv_points =
-            init_graph_transform(embedded_query.len(), expected_features, &graph_edges, train_data);
+        let mut inv_points = init_inverse_points(
+            embedded_query,
+            &indices,
+            &init_weights,
+            &fixed_rows,
+            train_embedding,
+            train_data,
+        );
 
         optimize_layout_inverse(
             &mut inv_points,
             train_data,
             &graph_edges,
+            &fixed_rows,
             fit_sigmas,
             fit_rhos,
             n_epochs,
@@ -1558,6 +1576,100 @@ fn init_graph_transform(
     result
 }
 
+fn init_inverse_points(
+    embedded_query: &[Vec<f32>],
+    neighbor_indices: &[Vec<usize>],
+    normalized_weights: &[Vec<f32>],
+    fixed_rows: &[bool],
+    train_embedding: &[Vec<f32>],
+    train_data: &[Vec<f32>],
+) -> Vec<Vec<f32>> {
+    let n_queries = embedded_query.len();
+    let low_dim = embedded_query[0].len();
+    let high_dim = train_data[0].len();
+    let mut result = vec![vec![0.0_f32; high_dim]; n_queries];
+
+    for i in 0..n_queries {
+        if fixed_rows[i] {
+            result[i].clone_from_slice(&train_data[neighbor_indices[i][0]]);
+            continue;
+        }
+
+        let mut z_bar = vec![0.0_f32; low_dim];
+        let mut x_bar = vec![0.0_f32; high_dim];
+        let mut weight_sum = 0.0_f32;
+
+        for (&idx, &weight) in neighbor_indices[i].iter().zip(normalized_weights[i].iter()) {
+            if weight <= 0.0 || !weight.is_finite() {
+                continue;
+            }
+            weight_sum += weight;
+            for d in 0..low_dim {
+                z_bar[d] += weight * train_embedding[idx][d];
+            }
+            for d in 0..high_dim {
+                x_bar[d] += weight * train_data[idx][d];
+            }
+        }
+
+        if weight_sum <= 0.0 {
+            result[i].fill(f32::NAN);
+            continue;
+        }
+
+        let mut gram = DMatrix::<f32>::zeros(low_dim, low_dim);
+        let mut rhs = DMatrix::<f32>::zeros(low_dim, high_dim);
+        let mut non_zero = 0usize;
+        for (&idx, &weight) in neighbor_indices[i].iter().zip(normalized_weights[i].iter()) {
+            if weight <= 0.0 || !weight.is_finite() {
+                continue;
+            }
+            non_zero += 1;
+            for a in 0..low_dim {
+                let z_a = train_embedding[idx][a] - z_bar[a];
+                for b in 0..low_dim {
+                    let z_b = train_embedding[idx][b] - z_bar[b];
+                    gram[(a, b)] += weight * z_a * z_b;
+                }
+                for d in 0..high_dim {
+                    let x_d = train_data[idx][d] - x_bar[d];
+                    rhs[(a, d)] += weight * z_a * x_d;
+                }
+            }
+        }
+
+        for d in 0..low_dim {
+            gram[(d, d)] += 1e-3;
+        }
+
+        let mut pred = x_bar.clone();
+        if non_zero > low_dim {
+            let lu = gram.lu();
+            if let Some(beta) = lu.solve(&rhs) {
+                let mut valid = true;
+                for d in 0..high_dim {
+                    let mut value = x_bar[d];
+                    for a in 0..low_dim {
+                        value += (embedded_query[i][a] - z_bar[a]) * beta[(a, d)];
+                    }
+                    if !value.is_finite() {
+                        valid = false;
+                        break;
+                    }
+                    pred[d] = value;
+                }
+                if !valid {
+                    pred.clone_from_slice(&x_bar);
+                }
+            }
+        }
+
+        result[i] = pred;
+    }
+
+    result
+}
+
 fn make_epochs_per_sample(weights: &[f32], n_epochs: usize) -> Vec<f32> {
     if weights.is_empty() {
         return Vec::new();
@@ -1825,6 +1937,7 @@ fn optimize_layout_inverse(
     head_embedding: &mut Vec<Vec<f32>>,
     tail_embedding: &[Vec<f32>],
     edges: &[Edge],
+    fixed_rows: &[bool],
     sigmas: &[f32],
     rhos: &[f32],
     n_epochs: usize,
@@ -1862,7 +1975,7 @@ fn optimize_layout_inverse(
 
             let head = edge.head;
             let tail = edge.tail;
-            if !is_finite_row(&head_embedding[head]) {
+            if fixed_rows[head] || !is_finite_row(&head_embedding[head]) {
                 continue;
             }
 
