@@ -1,0 +1,23 @@
+# Rust build artifacts
+rust_umap/target/
+
+# Python caches
+__pycache__/
+*.pyc
+
+# Benchmark generated artifacts
+benchmarks/data/
+benchmarks/data_real/
+benchmarks/data_real_fair/
+benchmarks/outputs/
+benchmarks/outputs_real/
+benchmarks/outputs_real_fair/
+benchmarks/time/
+benchmarks/time_real/
+benchmarks/time_real_fair/
+benchmarks/knn_real_fair/
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/

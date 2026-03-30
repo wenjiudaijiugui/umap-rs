@@ -1,0 +1,619 @@
+{
+  "config": {
+    "dataset_type": "real",
+    "n_neighbors": 15,
+    "n_components": 2,
+    "n_epochs": 200,
+    "init": "random",
+    "seed": 42,
+    "warmup": 1,
+    "repeats": 5,
+    "randomized_order_per_repeat": true,
+    "thread_env": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1",
+      "NUMBA_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": "0"
+    },
+    "groups": [
+      "e2e_default_ann",
+      "algo_exact_shared_knn"
+    ],
+    "datasets": [
+      {
+        "name": "breast_cancer",
+        "n_samples_original": 569,
+        "n_samples_used": 569,
+        "n_features": 30
+      },
+      {
+        "name": "digits",
+        "n_samples_original": 1797,
+        "n_samples_used": 1797,
+        "n_features": 64
+      },
+      {
+        "name": "california_housing",
+        "n_samples_original": 20640,
+        "n_samples_used": 15000,
+        "n_features": 8
+      }
+    ]
+  },
+  "groups": {
+    "e2e_default_ann": {
+      "breast_cancer": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 5.101522442600981,
+            "elapsed_std_sec": 0.0435186890132508,
+            "max_rss_mean_mb": 345.44921875,
+            "max_rss_std_mb": 0.21760301978315924,
+            "elapsed_samples_sec": [
+              5.0874250550041324,
+              5.06990883799881,
+              5.08121902700077,
+              5.081237783000688,
+              5.187821510000504
+            ],
+            "max_rss_samples_mb": [
+              345.40234375,
+              345.7890625,
+              345.265625,
+              345.1953125,
+              345.59375
+            ]
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 0.7645641516006435,
+            "elapsed_std_sec": 0.04492857442082709,
+            "max_rss_mean_mb": 174.75546875,
+            "max_rss_std_mb": 0.09887057512222736,
+            "elapsed_samples_sec": [
+              0.7157425519981189,
+              0.8299993830005405,
+              0.7509124610005529,
+              0.8033125900037703,
+              0.722853772000235
+            ],
+            "max_rss_samples_mb": [
+              174.76953125,
+              174.89453125,
+              174.64453125,
+              174.64453125,
+              174.82421875
+            ]
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.1293434914012323,
+            "elapsed_std_sec": 0.002284902412849524,
+            "max_rss_mean_mb": 4.25,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              0.12815487499756273,
+              0.12856475300213788,
+              0.1281925260045682,
+              0.12791116600419628,
+              0.13389413699769648
+            ],
+            "max_rss_samples_mb": [
+              4.25,
+              4.25,
+              4.25,
+              4.25,
+              4.25
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 569,
+          "trustworthiness_at_15": {
+            "r_uwot": 0.9147599520183,
+            "python_umap_learn": 0.9161963987974533,
+            "rust_umap": 0.9143041687857154
+          },
+          "original_knn_recall_at_15": {
+            "r_uwot": 0.40738137082601167,
+            "python_umap_learn": 0.39871118922085624,
+            "rust_umap": 0.4063268892794386
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.11523175082129056,
+              "knn_overlap_at_15": 0.5111892208553018
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.04179616340125942,
+              "knn_overlap_at_15": 0.6087873462214419
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.10401851709240369,
+              "knn_overlap_at_15": 0.5602811950790867
+            }
+          }
+        }
+      },
+      "digits": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 6.540968165000959,
+            "elapsed_std_sec": 0.026817444595742784,
+            "max_rss_mean_mb": 359.49140625,
+            "max_rss_std_mb": 0.5601916611889408,
+            "elapsed_samples_sec": [
+              6.555572258999746,
+              6.566966687001695,
+              6.560316809001961,
+              6.527351434000593,
+              6.494633636000799
+            ],
+            "max_rss_samples_mb": [
+              359.078125,
+              359.8984375,
+              359.12890625,
+              360.39453125,
+              358.95703125
+            ]
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 1.1447248359996594,
+            "elapsed_std_sec": 0.008697835131086927,
+            "max_rss_mean_mb": 182.61640625,
+            "max_rss_std_mb": 0.10350899153274078,
+            "elapsed_samples_sec": [
+              1.1497222639954998,
+              1.132005253006355,
+              1.1444905550015392,
+              1.1576415179952164,
+              1.139764589999686
+            ],
+            "max_rss_samples_mb": [
+              182.48828125,
+              182.6875,
+              182.5234375,
+              182.76953125,
+              182.61328125
+            ]
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.44431815360294424,
+            "elapsed_std_sec": 0.004833904774907439,
+            "max_rss_mean_mb": 6.7,
+            "max_rss_std_mb": 0.06123724356957945,
+            "elapsed_samples_sec": [
+              0.44212832700577565,
+              0.45392254699982004,
+              0.4415002260066103,
+              0.4428223930008244,
+              0.4412172750016907
+            ],
+            "max_rss_samples_mb": [
+              6.625,
+              6.75,
+              6.75,
+              6.625,
+              6.75
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1797,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9672480983693019,
+            "rust_umap": 0.9732674002371902,
+            "r_uwot": 0.9691629771695571
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.45627898349100426,
+            "rust_umap": 0.4719718048599519,
+            "r_uwot": 0.4652940085327405
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.9825165116346787,
+              "knn_overlap_at_15": 0.5414950843999264
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.9225644734885535,
+              "knn_overlap_at_15": 0.5496568354665177
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.7519582794800584,
+              "knn_overlap_at_15": 0.6083472454090143
+            }
+          }
+        }
+      },
+      "california_housing": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 12.524185595400922,
+            "elapsed_std_sec": 0.28307724907652493,
+            "max_rss_mean_mb": 470.0703125,
+            "max_rss_std_mb": 0.19162137145944866,
+            "elapsed_samples_sec": [
+              12.368667839000409,
+              12.347902914996666,
+              13.049378634001187,
+              12.586979438005073,
+              12.267999151001277
+            ],
+            "max_rss_samples_mb": [
+              470.13671875,
+              469.90625,
+              470.33203125,
+              470.17578125,
+              469.80078125
+            ]
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 5.996410596599162,
+            "elapsed_std_sec": 0.03417346989778492,
+            "max_rss_mean_mb": 267.9609375,
+            "max_rss_std_mb": 0.05524271728019903,
+            "elapsed_samples_sec": [
+              6.0181570400018245,
+              6.0221220050007105,
+              5.97720663400105,
+              6.02665263099334,
+              5.937914672998886
+            ],
+            "max_rss_samples_mb": [
+              268.05859375,
+              267.953125,
+              267.88671875,
+              267.94921875,
+              267.95703125
+            ]
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 3.889442854600202,
+            "elapsed_std_sec": 0.09938016880471051,
+            "max_rss_mean_mb": 33.759375,
+            "max_rss_std_mb": 0.05,
+            "elapsed_samples_sec": [
+              3.8137594159998116,
+              3.815877796005225,
+              4.077057376001903,
+              3.9042238269976224,
+              3.836295857996447
+            ],
+            "max_rss_samples_mb": [
+              33.734375,
+              33.734375,
+              33.734375,
+              33.859375,
+              33.734375
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 2000,
+          "trustworthiness_at_15": {
+            "rust_umap": 0.9662426066430618,
+            "r_uwot": 0.96949114820435,
+            "python_umap_learn": 0.968254543921767
+          },
+          "original_knn_recall_at_15": {
+            "rust_umap": 0.386833333333333,
+            "r_uwot": 0.3931666666666664,
+            "python_umap_learn": 0.38609999999999955
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.6745046440381335,
+              "knn_overlap_at_15": 0.5858666666666646
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.6258105519627972,
+              "knn_overlap_at_15": 0.5012333333333331
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.38004164131116724,
+              "knn_overlap_at_15": 0.5551666666666663
+            }
+          }
+        }
+      }
+    },
+    "algo_exact_shared_knn": {
+      "breast_cancer": {
+        "fit_timing_and_process_memory": {
+          "python_umap_learn": {
+            "fit_mean_sec": 0.18931299019750442,
+            "fit_std_sec": 0.0014034857726881792,
+            "fit_times_sec": [
+              0.1882181499968283,
+              0.19090530099492753,
+              0.18817163399944548,
+              0.19115228999726241,
+              0.18811757599905832
+            ],
+            "process_elapsed_sec": 4.429582898999797,
+            "process_max_rss_mb": 309.4609375
+          },
+          "r_uwot": {
+            "fit_mean_sec": 0.3086,
+            "fit_std_sec": 0.0047,
+            "fit_times_sec": [
+              0.312,
+              0.306,
+              0.306,
+              0.315,
+              0.304
+            ],
+            "process_elapsed_sec": 2.3051552649994846,
+            "process_max_rss_mb": 188.41015625
+          },
+          "rust_umap": {
+            "fit_mean_sec": 0.146893253,
+            "fit_std_sec": 0.001071483,
+            "fit_times_sec": [
+              0.145642932,
+              0.146555035,
+              0.147025467,
+              0.146399785,
+              0.148843046
+            ],
+            "process_elapsed_sec": 0.8929242250014795,
+            "process_max_rss_mb": 4.6015625
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 569,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.916196827971872,
+            "rust_umap": 0.9205001598674709,
+            "r_uwot": 0.9138850799659235
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.3950790861159939,
+            "rust_umap": 0.4114821323960172,
+            "r_uwot": 0.39964850615114345
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.2114767167385812,
+              "knn_overlap_at_15": 0.48084358523725856
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.2185033840016179,
+              "knn_overlap_at_15": 0.48517867603983544
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.011295572955053977,
+              "knn_overlap_at_15": 0.665846514352668
+            }
+          }
+        }
+      },
+      "digits": {
+        "fit_timing_and_process_memory": {
+          "python_umap_learn": {
+            "fit_mean_sec": 0.8069737366007758,
+            "fit_std_sec": 0.0009696699885673097,
+            "fit_times_sec": [
+              0.8066117269991082,
+              0.8072217740045744,
+              0.8053363830040325,
+              0.80746584499866,
+              0.8082329539975035
+            ],
+            "process_elapsed_sec": 7.965538329000992,
+            "process_max_rss_mb": 312.01171875
+          },
+          "r_uwot": {
+            "fit_mean_sec": 0.6244,
+            "fit_std_sec": 0.0074,
+            "fit_times_sec": [
+              0.634,
+              0.63,
+              0.622,
+              0.62,
+              0.616
+            ],
+            "process_elapsed_sec": 4.213841411998146,
+            "process_max_rss_mb": 195.3984375
+          },
+          "rust_umap": {
+            "fit_mean_sec": 0.416765124,
+            "fit_std_sec": 0.00049395,
+            "fit_times_sec": [
+              0.416081674,
+              0.416318204,
+              0.417409659,
+              0.417107162,
+              0.416908922
+            ],
+            "process_elapsed_sec": 2.5091610949966707,
+            "process_max_rss_mb": 7.67578125
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1797,
+          "trustworthiness_at_15": {
+            "r_uwot": 0.9702181200158851,
+            "python_umap_learn": 0.9671852561484473,
+            "rust_umap": 0.9716490823467314
+          },
+          "original_knn_recall_at_15": {
+            "r_uwot": 0.4661843813763677,
+            "python_umap_learn": 0.45468373214616986,
+            "rust_umap": 0.46414394360972
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.7068350990316747,
+              "knn_overlap_at_15": 0.5414208866629568
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.8915659156552791,
+              "knn_overlap_at_15": 0.5476534965683553
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.8991453417955098,
+              "knn_overlap_at_15": 0.6096457058059701
+            }
+          }
+        }
+      },
+      "california_housing": {
+        "fit_timing_and_process_memory": {
+          "python_umap_learn": {
+            "fit_mean_sec": 4.123344921998796,
+            "fit_std_sec": 0.004980251760761719,
+            "fit_times_sec": [
+              4.118578727000568,
+              4.1278360599972075,
+              4.124580647003313,
+              4.129155022994382,
+              4.11657415299851
+            ],
+            "process_elapsed_sec": 27.94700185900001,
+            "process_max_rss_mb": 333.60546875
+          },
+          "r_uwot": {
+            "fit_mean_sec": 3.9392,
+            "fit_std_sec": 0.0341,
+            "fit_times_sec": [
+              3.922,
+              3.915,
+              3.919,
+              3.943,
+              3.997
+            ],
+            "process_elapsed_sec": 24.190306059994327,
+            "process_max_rss_mb": 265.06640625
+          },
+          "rust_umap": {
+            "fit_mean_sec": 3.522556914,
+            "fit_std_sec": 0.019411898,
+            "fit_times_sec": [
+              3.549531015,
+              3.505968178,
+              3.542784486,
+              3.505910646,
+              3.508590246
+            ],
+            "process_elapsed_sec": 21.152158582000993,
+            "process_max_rss_mb": 39.03125
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 2000,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9678026133872871,
+            "r_uwot": 0.9662205867475974,
+            "rust_umap": 0.9686758725341427
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.3935333333333333,
+            "r_uwot": 0.38390000000000074,
+            "rust_umap": 0.39380000000000037
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.3417195786280943,
+              "knn_overlap_at_15": 0.6027666666666632
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.5169126335295884,
+              "knn_overlap_at_15": 0.6901333333333277
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.40064416816387993,
+              "knn_overlap_at_15": 0.5899333333333318
+            }
+          }
+        }
+      }
+    }
+  },
+  "comparison_to_previous_report_real": {
+    "available": true,
+    "by_dataset": {
+      "breast_cancer": {
+        "python_umap_learn": {
+          "old_single_elapsed_sec": 5.411748339996848,
+          "new_repeated_elapsed_mean_sec": 5.101522442600981,
+          "elapsed_ratio_new_over_old": 0.942675476037371,
+          "old_single_max_rss_mb": 348.921875,
+          "new_repeated_max_rss_mean_mb": 345.44921875,
+          "rss_ratio_new_over_old": 0.9900474676458735
+        },
+        "r_uwot": {
+          "old_single_elapsed_sec": 0.7879393370021717,
+          "new_repeated_elapsed_mean_sec": 0.7645641516006435,
+          "elapsed_ratio_new_over_old": 0.9703337753253157,
+          "old_single_max_rss_mb": 176.640625,
+          "new_repeated_max_rss_mean_mb": 174.75546875,
+          "rss_ratio_new_over_old": 0.989327731092437
+        },
+        "rust_umap": {
+          "old_single_elapsed_sec": 0.14648669200687436,
+          "new_repeated_elapsed_mean_sec": 0.1293434914012323,
+          "elapsed_ratio_new_over_old": 0.8829709349649485,
+          "old_single_max_rss_mb": 4.125,
+          "new_repeated_max_rss_mean_mb": 4.25,
+          "rss_ratio_new_over_old": 1.0303030303030303
+        }
+      },
+      "digits": {
+        "python_umap_learn": {
+          "old_single_elapsed_sec": 6.6668880809957045,
+          "new_repeated_elapsed_mean_sec": 6.540968165000959,
+          "elapsed_ratio_new_over_old": 0.981112639890613,
+          "old_single_max_rss_mb": 362.14453125,
+          "new_repeated_max_rss_mean_mb": 359.49140625,
+          "rss_ratio_new_over_old": 0.9926738504352328
+        },
+        "r_uwot": {
+          "old_single_elapsed_sec": 1.1882509479983128,
+          "new_repeated_elapsed_mean_sec": 1.1447248359996594,
+          "elapsed_ratio_new_over_old": 0.9633695962355628,
+          "old_single_max_rss_mb": 184.5234375,
+          "new_repeated_max_rss_mean_mb": 182.61640625,
+          "rss_ratio_new_over_old": 0.9896651001312503
+        },
+        "rust_umap": {
+          "old_single_elapsed_sec": 0.44003832199814497,
+          "new_repeated_elapsed_mean_sec": 0.44431815360294424,
+          "elapsed_ratio_new_over_old": 1.0097260429168198,
+          "old_single_max_rss_mb": 6.375,
+          "new_repeated_max_rss_mean_mb": 6.7,
+          "rss_ratio_new_over_old": 1.0509803921568628
+        }
+      },
+      "california_housing": {
+        "python_umap_learn": {
+          "old_single_elapsed_sec": 12.715242860998842,
+          "new_repeated_elapsed_mean_sec": 12.524185595400922,
+          "elapsed_ratio_new_over_old": 0.9849741552177549,
+          "old_single_max_rss_mb": 472.296875,
+          "new_repeated_max_rss_mean_mb": 470.0703125,
+          "rss_ratio_new_over_old": 0.9952856717504218
+        },
+        "r_uwot": {
+          "old_single_elapsed_sec": 6.026161232999584,
+          "new_repeated_elapsed_mean_sec": 5.996410596599162,
+          "elapsed_ratio_new_over_old": 0.9950630865570762,
+          "old_single_max_rss_mb": 270.0546875,
+          "new_repeated_max_rss_mean_mb": 267.9609375,
+          "rss_ratio_new_over_old": 0.9922469407238117
+        },
+        "rust_umap": {
+          "old_single_elapsed_sec": 3.895282370998757,
+          "new_repeated_elapsed_mean_sec": 3.889442854600202,
+          "elapsed_ratio_new_over_old": 0.9985008746883072,
+          "old_single_max_rss_mb": 33.60546875,
+          "new_repeated_max_rss_mean_mb": 33.759375,
+          "rss_ratio_new_over_old": 1.0045797977449726
+        }
+      }
+    }
+  }
+}
