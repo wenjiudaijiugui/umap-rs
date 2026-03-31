@@ -96,8 +96,6 @@ The repository CI and benchmark automation currently runs in these workflow stag
 2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` (binding tests + ecosystem benchmark smoke + machine-readable gate).
 3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled deep reporting via `consistency-smoke` -> `no-regression-smoke` -> `optimization-report`.
 
-`benchmarks/ci_ann_smoke.py` remains available for local ANN/e2e preflight checks.
-
 ## Local Validation Commands
 
 ```bash
@@ -124,14 +122,9 @@ $PYTHON_BIN -m py_compile \
   benchmarks/compare_real_impls_fair.py \
   benchmarks/compare_ecosystem_python_binding.py \
   benchmarks/ci_consistency_smoke.py \
-  benchmarks/ci_ann_smoke.py \
   benchmarks/ci_no_regression.py \
   benchmarks/run_rust_umap_py.py \
   benchmarks/run_rust_umap_py_algo.py
-
-$PYTHON_BIN benchmarks/ci_ann_smoke.py \
-  --python-bin "$PYTHON_BIN" \
-  --rscript-bin ""
 
 if command -v Rscript >/dev/null 2>&1; then
   Rscript benchmarks/install_r_bench_deps.R
