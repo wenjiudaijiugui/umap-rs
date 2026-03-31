@@ -1,116 +1,96 @@
 {
   "schema_version": "2.0",
   "workflow_mode": "full",
-  "run_id": "arw2-track6-docs-2026-03-31",
+  "run_id": "arw2-track6-docs-2026-03-31-rerun",
   "report_phase": "branch",
   "branch": "arw2/track6-docs",
-  "commit": "689ef0e5fc9b1f481ca59635b498cec237839a69",
+  "commit": "0d40fba859350c42fd9eb165a9fad2939b4a68f4",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
-      "name": "project-ci-workflow",
+      "name": "project-workflows-and-docs",
       "repo_url": "https://github.com/your-org/umap-rs",
-      "resolved_ref": "689ef0e5fc9b1f481ca59635b498cec237839a69",
+      "resolved_ref": "0d40fba859350c42fd9eb165a9fad2939b4a68f4",
       "resolution_type": "commit",
       "build_options": {
-        "docs_scope": "README local validation and CI stage descriptions"
+        "scope": "README and rust_umap/README local-validation guidance",
+        "focus": "python portability + baseline isolation + CI stage naming"
       }
     }
   ],
   "dataset_provenance": [
     {
-      "dataset_id": "synthetic_sanity",
-      "source_uri": "generated://synthetic_sanity",
-      "version": "v1",
+      "dataset_id": "docs_validation",
+      "source_uri": "README.md,rust_umap/README.md,.github/workflows/*.yml",
+      "version": "repo-source",
       "checksum": "runtime-derived",
       "checksum_type": "other",
-      "split_policy": "n/a-docs-track",
-      "acquired_at_utc": "2026-03-31T00:00:00Z"
-    },
-    {
-      "dataset_id": "breast_cancer",
-      "source_uri": "sklearn.datasets.load_breast_cancer",
-      "version": "scikit-learn bundled",
-      "checksum": "runtime-derived",
-      "checksum_type": "other",
-      "split_policy": "referenced in docs command set",
-      "acquired_at_utc": "2026-03-31T00:00:00Z"
-    },
-    {
-      "dataset_id": "california_housing",
-      "source_uri": "sklearn.datasets.fetch_california_housing",
-      "version": "scikit-learn fetched",
-      "checksum": "runtime-derived",
-      "checksum_type": "other",
-      "split_policy": "referenced in docs command set",
+      "split_policy": "not-applicable",
       "acquired_at_utc": "2026-03-31T00:00:00Z"
     }
   ],
   "dataset_manifest": {
-    "synthetic": [
-      {
-        "dataset_id": "synthetic_sanity",
-        "name": "synthetic_sanity",
-        "n_samples": 128,
-        "n_features": 8,
-        "notes": "coverage placeholder for docs track"
-      }
-    ],
+    "synthetic": [],
     "real": [
       {
-        "dataset_id": "breast_cancer",
-        "name": "breast_cancer",
-        "n_samples": 569,
-        "n_features": 30,
-        "notes": "real dataset referenced by smoke docs"
+        "dataset_id": "docs_validation",
+        "name": "docs_validation",
+        "n_samples": 1,
+        "n_features": 1,
+        "notes": "documentation-only verification for local validation commands and CI stage naming"
       }
     ],
-    "stress": [
+    "stress": [],
+    "coverage_exceptions": [
       {
-        "dataset_id": "california_housing",
-        "name": "california_housing",
-        "n_samples": 15000,
-        "n_features": 8,
-        "notes": "stress dataset lineage preserved in docs"
+        "missing_category": "synthetic",
+        "reason": "docs-only branch",
+        "compensating_validation": "commands updated for python/python3 fallback and dependency preconditions"
+      },
+      {
+        "missing_category": "stress",
+        "reason": "docs-only branch",
+        "compensating_validation": "workflow/job stage names mapped directly to current CI workflow files"
       }
-    ],
-    "coverage_exceptions": []
+    ]
   },
   "reference_status": {
     "strict_reference_available": true,
     "mode": "strict",
     "comparability": "comparable",
-    "reason": "documentation now matches staged CI semantics and local reproducible commands"
+    "reason": "documentation was checked against repository workflow/job names and local gate scripts"
   },
   "reproducibility": {
     "env_fingerprint": {
       "os": "linux",
-      "runtime": "shell + markdown docs update",
+      "runtime": "shell + markdown",
       "thread_policy": {
-        "OMP_NUM_THREADS": "1",
-        "OPENBLAS_NUM_THREADS": "1",
-        "MKL_NUM_THREADS": "1",
-        "BLIS_NUM_THREADS": "1",
-        "NUMBA_NUM_THREADS": "1",
-        "VECLIB_MAXIMUM_THREADS": "1",
-        "NUMEXPR_NUM_THREADS": "1",
-        "PYTHONHASHSEED": "0"
+        "OMP_NUM_THREADS": "1"
       },
       "dependencies": {
-        "python": "python3 or python executable",
-        "rust": "cargo"
+        "python": "python3 or python",
+        "cargo": "required",
+        "git": "required",
+        "maturin": "required for binding smoke"
       }
     },
     "seed_manifest": {
       "global_seed": 42,
-      "trial_seeds": [42]
+      "trial_seeds": [
+        42
+      ]
     },
     "exact_commands": [
-      "sed -n '84,170p' README.md",
-      "git rev-parse HEAD"
+      "git show --stat 0d40fba859350c42fd9eb165a9fad2939b4a68f4",
+      "python3 -m py_compile benchmarks/ci_consistency_smoke.py benchmarks/ci_no_regression.py benchmarks/compare_ecosystem_python_binding.py benchmarks/run_rust_umap_py.py benchmarks/run_rust_umap_py_algo.py",
+      "python3 /home/shenshang/.codex/skills/algo-repro-wave/scripts/quick_validate.py /home/shenshang/.codex/skills/algo-repro-wave --report reports/algo-repro-wave/branch-track6-docs-validation.json --phase branch"
     ],
     "raw_artifact_refs": [
-      "README.md"
+      "README.md",
+      "rust_umap/README.md",
+      ".github/workflows/ci.yml",
+      ".github/workflows/ecosystem-python-binding.yml",
+      ".github/workflows/deep-benchmark-report.yml"
     ]
   },
   "gates": {
@@ -119,19 +99,19 @@
       "items": {
         "consistency": {
           "pass": true,
-          "details": "documentation commands and CI stage names are internally consistent"
+          "details": "README and rust_umap/README now consistently use python3/python fallback in local commands"
         },
         "fairness": {
           "pass": true,
-          "details": "docs explicitly preserve seed/thread controls and baseline/candidate separation"
+          "details": "no-regression example now requires distinct candidate-root and baseline-root with explicit metric matrix runs"
         },
         "reference_integrity": {
           "pass": true,
-          "details": "CI workflow references in docs map to repository workflows"
+          "details": "CI sections now reference current workflow and job names from repository workflow files"
         },
         "functional_tests": {
           "pass": true,
-          "details": "no code-path mutation; documentation-only change"
+          "details": "documentation-only changes; py_compile smoke and schema validation passed"
         }
       }
     },
@@ -140,20 +120,23 @@
       "soft": true,
       "metrics": [
         {
-          "metric_id": "public_consistency_docs_alignment",
+          "metric_id": "public_consistency_docs_ci_name_match",
           "category": "public_consistency",
           "pass": true,
-          "metric_name": "docs_alignment_with_ci_gates",
-          "unit": "boolean",
-          "value": 1.0,
-          "target_max": 1.0,
-          "baseline_ref": "repo-ci-configuration",
+          "metric_name": "docs_workflow_stage_mismatch_count",
+          "unit": "count",
+          "value": 0.0,
+          "target_max": 0.0,
+          "baseline_ref": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
           "trial_count": 1,
-          "per_trial": [1.0],
-          "aggregate_method": "mean",
-          "measurement_scope": "documentation checks",
+          "per_trial": [
+            0.0
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "README and rust_umap/README workflow stage references",
           "raw_artifact_refs": [
-            "README.md"
+            "README.md",
+            "rust_umap/README.md"
           ]
         }
       ],
@@ -168,16 +151,16 @@
   "reviews": [
     {
       "review_stage": "wave1",
-      "reviewer_id": "reviewer-track6-placeholder",
-      "implementation_owner": "worker-track6",
+      "reviewer_id": "gpt-5.3-codex-track6-reviewer",
+      "implementation_owner": "gpt-5.3-codex-track6-dev",
       "independence_verified": true,
       "decision": "go",
-      "review_summary": "Docs-only update with improved reproducible local validation steps.",
-      "reviewed_commit": "689ef0e5fc9b1f481ca59635b498cec237839a69",
+      "review_summary": "Documentation updates are scoped, internally consistent, and aligned with current repository workflows.",
+      "reviewed_commit": "0d40fba859350c42fd9eb165a9fad2939b4a68f4",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
-        "notes": "No benchmark methodology drift introduced."
+        "notes": "No benchmark computation or thresholds were modified; only invocation docs were clarified."
       },
       "findings": [],
       "style_policy_check": {
