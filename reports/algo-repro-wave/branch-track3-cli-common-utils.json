@@ -94,7 +94,11 @@
     },
     "seed_manifest": {
       "global_seed": 42,
-      "trial_seeds": [42, 43, 44]
+      "trial_seeds": [
+        42,
+        43,
+        44
+      ]
     },
     "exact_commands": [
       "cargo test --manifest-path rust_umap/Cargo.toml",
@@ -142,7 +146,9 @@
           "target_max": 1.0,
           "baseline_ref": "baseline_cli_behavior",
           "trial_count": 1,
-          "per_trial": [1.0],
+          "per_trial": [
+            1.0
+          ],
           "aggregate_method": "mean",
           "measurement_scope": "build+unit-level parity",
           "raw_artifact_refs": [
@@ -173,6 +179,38 @@
         "notes": "No fairness-affecting benchmark parameter logic changed"
       },
       "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track3-cli-common",
+      "implementation_owner": "impl-track3",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed CLI helper dedup compiles and preserves behavior; one low-severity maintainability issue is noted.",
+      "reviewed_commit": "aa0d2e974df2fee8091f0c2347677a54c3dd5652",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "No changes to benchmark metrics, seeds, or thread controls; refactor is limited to CLI helper reuse."
+      },
+      "findings": [
+        {
+          "severity": "low",
+          "title": "Shared CLI helper is materialized as an inert binary target",
+          "risk": "Cargo now exposes an extra executable (common_cli), increasing binary surface and potentially confusing downstream tooling/users.",
+          "recommendation": "Move shared helper code to a non-bin module path (or crate library module) so deduplication does not add a user-facing binary target.",
+          "evidence_refs": [
+            "rust_umap/src/bin/common_cli.rs:230",
+            "cargo metadata --no-deps --format-version 1 (shows common_cli target)"
+          ]
+        }
+      ],
       "style_policy_check": {
         "defensive_programming_minimized": true,
         "redundancy_minimized": true,
