@@ -123,7 +123,7 @@
           "category": "public_consistency",
           "unit": "abs_delta",
           "value": 0.0,
-          "target_max": 0.00001,
+          "target_max": 1e-05,
           "baseline_ref": "smooth_knn_dist_regression_suite",
           "trial_count": 2,
           "per_trial": [
@@ -159,6 +159,27 @@
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
         "notes": "Scope isolation, deterministic execution, and comparable command boundaries verified for this branch task."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track1-core",
+      "implementation_owner": "gpt-5.3-codex-track1-dev",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed the smooth_kNN self/non-self handling changes are scoped and validated by targeted unit tests.",
+      "reviewed_commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Deterministic seeds and benchmark boundaries are unchanged; only graph-kNN row semantics and tests were adjusted."
       },
       "findings": [],
       "style_policy_check": {
