@@ -89,6 +89,7 @@ jobs:
         run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
       - name: ANN/e2e smoke gate (python_umap_learn vs rust_umap)
         run: |
+          set -euo pipefail
           python benchmarks/ci_ann_smoke.py \
             --python-bin python \
             --rscript-bin "" \
