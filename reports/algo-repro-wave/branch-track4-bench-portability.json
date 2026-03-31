@@ -4,7 +4,7 @@
   "run_id": "arw2-track4-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track4-portability",
-  "commit": "PENDING_COMMIT",
+  "commit": "fe8b991143a4337c9c78b43935090f56ed324f72",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
@@ -157,7 +157,7 @@
       "independence_verified": true,
       "decision": "go",
       "review_summary": "Portability improvements are isolated and preserve fairness controls.",
-      "reviewed_commit": "PENDING_COMMIT",
+      "reviewed_commit": "fe8b991143a4337c9c78b43935090f56ed324f72",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
