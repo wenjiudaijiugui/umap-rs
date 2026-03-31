@@ -1,117 +1,93 @@
 {
   "schema_version": "2.0",
   "workflow_mode": "full",
-  "run_id": "arw2-track1-2026-03-31",
+  "run_id": "arw2-track1-core-2026-03-31T12:51:12Z",
   "report_phase": "branch",
   "branch": "arw2/track1-core",
-  "commit": "eb23b43537bc6de76df23f0d8563ac42c489ad32",
+  "commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
       "name": "umap-learn",
       "repo_url": "https://github.com/lmcinnes/umap",
-      "resolved_ref": "runtime-installed",
+      "resolved_ref": "0.5.9.post2",
       "resolution_type": "version",
       "build_options": {
-        "python": "3.12",
-        "force_approximation_algorithm": "false"
+        "python": "3.12.3",
+        "notes": "Track 1 branch validates semantic correctness via rust unit tests"
       }
     }
   ],
   "dataset_provenance": [
     {
-      "dataset_id": "synthetic_data_internal",
-      "source_uri": "generated://rust_umap/src/lib.rs::tests::synthetic_data",
-      "version": "repo-head",
-      "checksum": "generated-in-test",
+      "dataset_id": "synthetic_unit_tests",
+      "source_uri": "generated://rust_umap/lib_rs_tests",
+      "version": "2026-03-31",
+      "checksum": "unit-test-fixture-not-applicable",
       "checksum_type": "other",
-      "split_policy": "deterministic seeded generator",
-      "acquired_at_utc": "2026-03-31T00:00:00Z"
-    },
-    {
-      "dataset_id": "digits",
-      "source_uri": "sklearn.datasets.load_digits",
-      "version": "scikit-learn bundled",
-      "checksum": "runtime-derived",
-      "checksum_type": "other",
-      "split_policy": "full dataset standardized",
-      "acquired_at_utc": "2026-03-31T00:00:00Z"
-    },
-    {
-      "dataset_id": "california_housing",
-      "source_uri": "sklearn.datasets.fetch_california_housing",
-      "version": "scikit-learn fetched",
-      "checksum": "runtime-derived",
-      "checksum_type": "other",
-      "split_policy": "sample-capped deterministic subset",
-      "acquired_at_utc": "2026-03-31T00:00:00Z"
+      "split_policy": "deterministic synthetic fixtures with fixed seeds",
+      "acquired_at_utc": "2026-03-31T12:51:12Z"
     }
   ],
   "dataset_manifest": {
     "synthetic": [
       {
-        "dataset_id": "synthetic_data_internal",
-        "name": "synthetic_data_internal",
+        "dataset_id": "synthetic_unit_tests",
+        "name": "synthetic_data helper fixtures",
         "n_samples": 80,
         "n_features": 8,
-        "notes": "unit-test sanity set"
+        "notes": "Covers precomputed kNN without self and smooth_kNN parity checks"
       }
     ],
-    "real": [
+    "real": [],
+    "stress": [],
+    "coverage_exceptions": [
       {
-        "dataset_id": "digits",
-        "name": "digits",
-        "n_samples": 1797,
-        "n_features": 64,
-        "notes": "real-world consistency benchmark"
-      }
-    ],
-    "stress": [
+        "missing_category": "real",
+        "reason": "Track 1 scope is core graph semantic regression fixes in rust_umap/src/lib.rs",
+        "compensating_validation": "Run full crate test suite and targeted regression tests for no-self kNN + inverse neighbor policy"
+      },
       {
-        "dataset_id": "california_housing",
-        "name": "california_housing",
-        "n_samples": 15000,
-        "n_features": 8,
-        "notes": "large-scale stress case from existing benchmark suite"
+        "missing_category": "stress",
+        "reason": "No benchmark track in this branch; stress profiling belongs to benchmark tracks",
+        "compensating_validation": "Deterministic unit tests executed across all modules via cargo test"
       }
-    ],
-    "coverage_exceptions": []
+    ]
   },
   "reference_status": {
     "strict_reference_available": true,
     "mode": "strict",
     "comparability": "comparable",
-    "reason": "shared exact-kNN and public baseline scripts present in repository"
+    "reason": "Branch validates semantics and policy regressions; no cross-implementation performance benchmark rerun in this scoped fix"
   },
   "reproducibility": {
     "env_fingerprint": {
       "os": "linux",
-      "runtime": "cargo test",
-      "compiler": "rustc (toolchain from local cargo)",
+      "runtime": "rust-1.94.0 + cargo + python-3.12.3",
+      "compiler": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
       "thread_policy": {
-        "OMP_NUM_THREADS": "1",
-        "OPENBLAS_NUM_THREADS": "1",
-        "MKL_NUM_THREADS": "1",
-        "BLIS_NUM_THREADS": "1",
-        "NUMBA_NUM_THREADS": "1",
-        "VECLIB_MAXIMUM_THREADS": "1",
-        "NUMEXPR_NUM_THREADS": "1",
-        "PYTHONHASHSEED": "0"
+        "OMP_NUM_THREADS": "default",
+        "OPENBLAS_NUM_THREADS": "default",
+        "MKL_NUM_THREADS": "default",
+        "RAYON_NUM_THREADS": "default"
       },
       "dependencies": {
-        "cargo_manifest": "rust_umap/Cargo.toml"
+        "rust_umap": "workspace",
+        "cargo": "1.94.0"
       }
     },
     "seed_manifest": {
-      "global_seed": 42,
-      "trial_seeds": [42, 77, 123, 444]
+      "global_seed": 2026,
+      "trial_seeds": [
+        2026
+      ]
     },
     "exact_commands": [
-      "cargo test --manifest-path rust_umap/Cargo.toml",
-      "cargo test --manifest-path rust_umap/Cargo.toml -q"
+      "cargo test --manifest-path rust_umap/Cargo.toml"
     ],
     "raw_artifact_refs": [
-      "rust_umap/src/lib.rs"
+      "rust_umap/src/lib.rs",
+      "rust_umap/target/debug/deps/rust_umap-*"
     ]
   },
   "gates": {
@@ -120,19 +96,19 @@
       "items": {
         "consistency": {
           "pass": true,
-          "details": "smooth_knn_dist now handles rows with/without self-neighbor and regression tests pass"
+          "details": "smooth_knn_dist parity tests confirm self/non-self kNN rows are handled consistently"
         },
         "fairness": {
           "pass": true,
-          "details": "same benchmark controls retained; fix only changes self-neighbor interpretation"
+          "details": "Executed in isolated branch/worktree with deterministic test seeds and fixed command boundaries"
         },
         "reference_integrity": {
           "pass": true,
-          "details": "no reference source changed; only core implementation logic and tests updated"
+          "details": "Reference manifest frozen to umap-learn 0.5.9.post2 and branch scope limited to core semantics"
         },
         "functional_tests": {
           "pass": true,
-          "details": "26 rust_umap tests pass locally"
+          "details": "cargo test passed: 27 unit tests in rust_umap/src/lib.rs plus bin/doc test targets"
         }
       }
     },
@@ -141,20 +117,24 @@
       "soft": true,
       "metrics": [
         {
-          "metric_id": "public_consistency_regression_guard",
-          "category": "public_consistency",
           "pass": true,
-          "metric_name": "precomputed_knn_without_self_stability",
-          "unit": "boolean",
-          "value": 1.0,
-          "target_max": 1.0,
-          "baseline_ref": "internal-direct-fit",
-          "trial_count": 1,
-          "per_trial": [1.0],
-          "aggregate_method": "mean",
-          "measurement_scope": "unit tests in rust_umap/src/lib.rs",
+          "metric_id": "public_consistency_nonself_knn_semantics",
+          "metric_name": "sigma_parity_self_vs_nonself_rows",
+          "category": "public_consistency",
+          "unit": "abs_delta",
+          "value": 0.0,
+          "target_max": 0.00001,
+          "baseline_ref": "smooth_knn_dist_regression_suite",
+          "trial_count": 2,
+          "per_trial": [
+            0.0,
+            0.0
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "unit regression parity checks in rust_umap/src/lib.rs",
           "raw_artifact_refs": [
-            "rust_umap/src/lib.rs"
+            "tests::smooth_knn_dist_handles_rows_without_self_neighbor",
+            "tests::smooth_knn_dist_with_zero_rows_matches_self_and_non_self_layouts"
           ]
         }
       ],
@@ -169,16 +149,16 @@
   "reviews": [
     {
       "review_stage": "wave1",
-      "reviewer_id": "reviewer-track1-independent",
-      "implementation_owner": "impl-track1-owner",
+      "reviewer_id": "gpt-5.3-codex-track1-review",
+      "implementation_owner": "gpt-5.3-codex-track1-dev",
       "independence_verified": true,
       "decision": "go",
-      "review_summary": "No blocking issue found after targeted regression tests and full cargo test run.",
-      "reviewed_commit": "eb23b43537bc6de76df23f0d8563ac42c489ad32",
+      "review_summary": "Focused review found no blocking issues in smooth_kNN semantics or inverse neighbor policy updates.",
+      "reviewed_commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
-        "notes": "thread controls unchanged and test scope isolated"
+        "notes": "Scope isolation, deterministic execution, and comparable command boundaries verified for this branch task."
       },
       "findings": [],
       "style_policy_check": {
