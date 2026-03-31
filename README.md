@@ -40,14 +40,20 @@ for cross-ecosystem usage and fair benchmarking against `umap-learn`.
 ### Build and install binding locally
 
 ```bash
-python -m pip install --upgrade pip maturin
+PYTHON_BIN="$(command -v python3 || command -v python)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "python3/python not found" >&2
+  exit 1
+fi
+$PYTHON_BIN -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```
 
 ### End-to-end call example (library API)
 
 ```bash
-python - <<'PY'
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" - <<'PY'
 import numpy as np
 from rust_umap_py import Umap
 
@@ -70,8 +76,9 @@ PY
 ### Ecosystem benchmark (umap-learn vs rust_umap_py)
 
 ```bash
-python benchmarks/compare_ecosystem_python_binding.py \
-  --python-bin python \
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" benchmarks/compare_ecosystem_python_binding.py \
+  --python-bin "$PYTHON_BIN" \
   --warmup 1 \
   --repeats 3 \
   --sample-cap-consistency 2000
@@ -83,21 +90,35 @@ Outputs:
 
 ## CI and Benchmark Gates
 
-The repository CI is intentionally staged:
+The repository CI and benchmark automation currently runs in these workflow stages:
 
-1. Public-implementation consistency smoke check.
-2. Euclidean no-regression smoke check against a baseline branch.
-3. Optional optimization-stage benchmark report in a deeper manual/scheduled workflow.
-
-Fast PR validation lives in `.github/workflows/ci.yml`.
-Deeper benchmark reporting lives in `.github/workflows/deep-benchmark-report.yml`.
+1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `no-regression-smoke` (metric matrix: euclidean/manhattan/cosine).
+2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` (binding tests + ecosystem benchmark smoke + machine-readable gate).
+3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled deep reporting via `consistency-smoke` -> `no-regression-smoke` -> `optimization-report`.
 
 ## Local Validation Commands
 
 ```bash
+# Run from repository root.
+for cmd in cargo git; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "$cmd not found" >&2
+    exit 1
+  fi
+done
+
+PYTHON_BIN="$(command -v python3 || command -v python)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "python3/python not found" >&2
+  exit 1
+fi
+
 cargo test --manifest-path rust_umap/Cargo.toml
 
-python3 -m py_compile \
+$PYTHON_BIN -m pip install --upgrade pip
+$PYTHON_BIN -m pip install -r benchmarks/requirements-bench.txt pytest maturin
+
+$PYTHON_BIN -m py_compile \
   benchmarks/compare_real_impls_fair.py \
   benchmarks/compare_ecosystem_python_binding.py \
   benchmarks/ci_consistency_smoke.py \
@@ -105,14 +126,38 @@ python3 -m py_compile \
   benchmarks/run_rust_umap_py.py \
   benchmarks/run_rust_umap_py_algo.py
 
-python benchmarks/ci_consistency_smoke.py \
-  --python-bin python \
-  --rscript-bin Rscript \
-  --require-r
+if command -v Rscript >/dev/null 2>&1; then
+  Rscript benchmarks/install_r_bench_deps.R
+  $PYTHON_BIN benchmarks/ci_consistency_smoke.py \
+    --python-bin "$PYTHON_BIN" \
+    --rscript-bin Rscript \
+    --require-r
+else
+  $PYTHON_BIN benchmarks/ci_consistency_smoke.py \
+    --python-bin "$PYTHON_BIN" \
+    --rscript-bin ""
+fi
 
-python benchmarks/ci_no_regression.py \
-  --candidate-root . \
-  --baseline-root .
+# Build/install local binding before running binding tests.
+maturin develop --manifest-path rust_umap_py/Cargo.toml
 
-pytest -q rust_umap_py/tests/test_binding.py
+# candidate-root and baseline-root must point to different trees.
+CANDIDATE_ROOT="$(pwd -P)"
+BASE_REF="$(git rev-parse HEAD~1)"
+git worktree add ../umap-rs-baseline "$BASE_REF"
+BASELINE_ROOT="$(cd ../umap-rs-baseline && pwd -P)"
+if [ "$CANDIDATE_ROOT" = "$BASELINE_ROOT" ]; then
+  echo "candidate-root and baseline-root must be different directories" >&2
+  exit 1
+fi
+
+for METRIC in euclidean manhattan cosine; do
+  $PYTHON_BIN benchmarks/ci_no_regression.py \
+    --candidate-root "$CANDIDATE_ROOT" \
+    --baseline-root "$BASELINE_ROOT" \
+    --metric "$METRIC"
+done
+git worktree remove ../umap-rs-baseline
+
+$PYTHON_BIN -m pytest -q rust_umap_py/tests/test_binding.py
 ```

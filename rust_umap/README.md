@@ -52,13 +52,13 @@ cargo run --release
 
 ## CI-facing validation
 
-Repository automation keeps benchmark validation staged in this order:
+Repository automation keeps benchmark validation staged by workflow/job:
 
-1. Compare consistency against public implementations.
-2. Check for no-regression on timing and memory (metric matrix: euclidean/manhattan/cosine).
-3. Run a deeper optimization-stage benchmark report when explicitly requested.
+1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `no-regression-smoke` (euclidean/manhattan/cosine matrix).
+2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` for binding tests and ecosystem smoke/gate outputs.
+3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled `optimization-report` after consistency and no-regression jobs.
 
-The Rust crate remains the unit under test in all three stages.
+The Rust crate remains the unit under test in all staged checks.
 
 For CSV-driven runs:
 
@@ -105,8 +105,9 @@ cargo run --release --bin bench_fit_csv -- \
 To benchmark sparse CSR fits against `umap-learn` (consistency + speed + memory):
 
 ```bash
+PYTHON_BIN="$(command -v python3 || command -v python)"
 uv run --with numpy --with scipy --with scikit-learn --with umap-learn \
-  python rust_umap/benchmarks/eval_sparse_csr_vs_umap_learn.py --dataset all
+  "$PYTHON_BIN" rust_umap/benchmarks/eval_sparse_csr_vs_umap_learn.py --dataset all
 ```
 
 ## Minimal library usage
@@ -164,10 +165,11 @@ This implementation prioritizes clarity and reproducibility over large-scale per
 For inverse-transform quality and Euclidean fit no-regression checks:
 
 ```bash
-python rust_umap/benchmarks/eval_inverse_quality.py --dataset all
-python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+PYTHON_BIN="$(command -v python3 || command -v python)"
+"$PYTHON_BIN" rust_umap/benchmarks/eval_inverse_quality.py --dataset all
+"$PYTHON_BIN" rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
   --output-json rust_umap/benchmarks/current_fit_regression.json
-python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+"$PYTHON_BIN" rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
   --baseline-report rust_umap/benchmarks/current_fit_regression.json
 ```
 
