@@ -1,7 +1,7 @@
-use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, SparseCsrMatrix, UmapModel, UmapParams};
 use std::env;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -31,9 +31,23 @@ fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
     }
 }
 
-fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>), Box<dyn Error>> {
+#[derive(Debug, Clone)]
+struct SparseInputArgs {
+    indptr_path: String,
+    indices_path: String,
+    data_path: String,
+    n_cols: usize,
+}
+
+fn extract_optional_args(
+    args: &mut Vec<String>,
+) -> Result<(Metric, Option<Metric>, Option<SparseInputArgs>), Box<dyn Error>> {
     let mut metric = Metric::Euclidean;
     let mut knn_metric: Option<Metric> = None;
+    let mut csr_indptr: Option<String> = None;
+    let mut csr_indices: Option<String> = None;
+    let mut csr_data: Option<String> = None;
+    let mut csr_n_cols: Option<usize> = None;
     let mut i = 1;
     while i < args.len() {
         if args[i] == "--metric" {
@@ -48,11 +62,53 @@ fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>
             }
             knn_metric = Some(parse_metric(&args[i + 1])?);
             args.drain(i..=i + 1);
+        } else if args[i] == "--csr-indptr" {
+            if i + 1 >= args.len() {
+                return Err("--csr-indptr requires a file path".into());
+            }
+            csr_indptr = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-indices" {
+            if i + 1 >= args.len() {
+                return Err("--csr-indices requires a file path".into());
+            }
+            csr_indices = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-data" {
+            if i + 1 >= args.len() {
+                return Err("--csr-data requires a file path".into());
+            }
+            csr_data = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-n-cols" {
+            if i + 1 >= args.len() {
+                return Err("--csr-n-cols requires an integer value".into());
+            }
+            csr_n_cols = Some(args[i + 1].parse::<usize>()?);
+            args.drain(i..=i + 1);
         } else {
             i += 1;
         }
     }
-    Ok((metric, knn_metric))
+
+    let has_any_csr =
+        csr_indptr.is_some() || csr_indices.is_some() || csr_data.is_some() || csr_n_cols.is_some();
+    let sparse = if has_any_csr {
+        let indptr_path = csr_indptr.ok_or("--csr-indptr is required when using CSR input")?;
+        let indices_path = csr_indices.ok_or("--csr-indices is required when using CSR input")?;
+        let data_path = csr_data.ok_or("--csr-data is required when using CSR input")?;
+        let n_cols = csr_n_cols.ok_or("--csr-n-cols is required when using CSR input")?;
+        Some(SparseInputArgs {
+            indptr_path,
+            indices_path,
+            data_path,
+            n_cols,
+        })
+    } else {
+        None
+    };
+
+    Ok((metric, knn_metric, sparse))
 }
 
 fn metric_name(metric: Metric) -> &'static str {
@@ -103,6 +159,64 @@ fn read_csv_usize(path: &Path) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
     Ok(data)
 }
 
+fn read_csv_flat_usize(path: &Path) -> Result<Vec<usize>, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut values = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for token in trimmed.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            values.push(token.parse::<usize>()?);
+        }
+    }
+
+    Ok(values)
+}
+
+fn read_csv_flat_f32(path: &Path) -> Result<Vec<f32>, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut values = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for token in trimmed.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            values.push(token.parse::<f32>()?);
+        }
+    }
+
+    Ok(values)
+}
+
+fn read_sparse_csr(spec: &SparseInputArgs) -> Result<SparseCsrMatrix, Box<dyn Error>> {
+    let indptr = read_csv_flat_usize(Path::new(&spec.indptr_path))?;
+    let indices = read_csv_flat_usize(Path::new(&spec.indices_path))?;
+    let values = read_csv_flat_f32(Path::new(&spec.data_path))?;
+    if indptr.is_empty() {
+        return Err("csr indptr cannot be empty".into());
+    }
+    let n_rows = indptr.len() - 1;
+    SparseCsrMatrix::new(n_rows, spec.n_cols, indptr, indices, values)
+        .map_err(|e| -> Box<dyn Error> { Box::new(e) })
+}
+
 fn write_csv(path: &Path, arr: &[Vec<f32>]) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -122,7 +236,8 @@ fn write_csv(path: &Path, arr: &[Vec<f32>]) -> Result<(), Box<dyn Error>> {
 
 fn usage() {
     eprintln!(
-        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]"
+        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]\n\
+          Optional CSR input (fit mode): --csr-indptr <path> --csr-indices <path> --csr-data <path> --csr-n-cols <n>"
     );
 }
 
@@ -142,9 +257,20 @@ fn mean_std(vals: &[f64]) -> (f64, f64) {
     (mean, var.sqrt())
 }
 
+fn read_proc_status_kb(field: &str) -> Option<u64> {
+    let status = fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix(field) {
+            let value = rest.split_whitespace().next()?;
+            return value.parse::<u64>().ok();
+        }
+    }
+    None
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let (metric, knn_metric_opt) = extract_metric_args(&mut args)?;
+    let (metric, knn_metric_opt, sparse_input) = extract_optional_args(&mut args)?;
     if args.len() < 14 {
         usage();
         return Err("insufficient arguments".into());
@@ -176,9 +302,21 @@ fn main() -> Result<(), Box<dyn Error>> {
     if precomputed.is_none() && knn_metric_opt.is_some() {
         return Err("--knn-metric requires precomputed kNN inputs".into());
     }
+    if sparse_input.is_some() && precomputed.is_some() {
+        return Err("CSR input cannot be combined with precomputed kNN files".into());
+    }
     let knn_metric = knn_metric_opt.unwrap_or(metric);
 
-    let data = read_csv(input_path)?;
+    let dense_data = if sparse_input.is_some() {
+        None
+    } else {
+        Some(read_csv(input_path)?)
+    };
+    let sparse_data = if let Some(spec) = sparse_input.as_ref() {
+        Some(read_sparse_csr(spec)?)
+    } else {
+        None
+    };
 
     let params = UmapParams {
         n_neighbors,
@@ -203,13 +341,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     let total = warmup + repeats;
     let mut times = Vec::with_capacity(repeats);
     let mut last_embedding: Option<Vec<Vec<f32>>> = None;
+    let vmhwm_before = read_proc_status_kb("VmHWM:");
+    let vmrss_before = read_proc_status_kb("VmRSS:");
 
     for i in 0..total {
         let mut model = UmapModel::new(params.clone());
         let t0 = Instant::now();
         let embedding = if let Some((ref idx, ref dist)) = precomputed {
-            model.fit_transform_with_knn_metric(&data, idx, dist, knn_metric)?
+            let data = dense_data
+                .as_ref()
+                .ok_or("precomputed kNN requires dense input data")?;
+            model.fit_transform_with_knn_metric(data, idx, dist, knn_metric)?
+        } else if let Some(data) = sparse_data.as_ref() {
+            model.fit_transform_sparse_csr(data.clone())?
         } else {
+            let data = dense_data
+                .as_ref()
+                .ok_or("dense input data is unavailable")?;
             model.fit_transform(&data)?
         };
         let dt = t0.elapsed().as_secs_f64();
@@ -218,15 +366,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         last_embedding = Some(embedding);
     }
+    let vmhwm_after = read_proc_status_kb("VmHWM:");
+    let vmrss_after = read_proc_status_kb("VmRSS:");
 
     if let Some(embedding) = last_embedding.as_ref() {
         write_csv(output_path, embedding)?;
     }
 
     let (mean, std) = mean_std(&times);
+    let algo_mem_proxy_available = vmhwm_before.is_some()
+        && vmhwm_after.is_some()
+        && vmrss_before.is_some()
+        && vmrss_after.is_some();
+    let vmhwm_before_mb = vmhwm_before.unwrap_or(0) as f64 / 1024.0;
+    let vmhwm_after_mb = vmhwm_after.unwrap_or(0) as f64 / 1024.0;
+    let vmrss_before_mb = vmrss_before.unwrap_or(0) as f64 / 1024.0;
+    let vmrss_after_mb = vmrss_after.unwrap_or(0) as f64 / 1024.0;
+    let algo_peak_delta_mb = if let (Some(before), Some(after)) = (vmhwm_before, vmhwm_after) {
+        after.saturating_sub(before) as f64 / 1024.0
+    } else {
+        0.0
+    };
 
     print!(
         "{{\"mode\":\"fit\",\
+\"input_format\":\"{}\",\
 \"metric\":\"{}\",\
 \"knn_metric\":\"{}\",\
 \"precomputed_knn\":{},\
@@ -237,6 +401,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 \"warmup\":{},\
 \"repeats\":{},\
 \"fit_times_sec\":[",
+        if sparse_data.is_some() {
+            "csr"
+        } else {
+            "dense"
+        },
         metric_name(metric),
         metric_name(knn_metric),
         precomputed.is_some(),
@@ -254,8 +423,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         print!("{:.9}", t);
     }
     println!(
-        "],\"fit_mean_sec\":{:.9},\"fit_std_sec\":{:.9}}}",
-        mean, std
+        "],\"fit_mean_sec\":{:.9},\"fit_std_sec\":{:.9},\
+\"algorithm_phase_memory_proxy_available\":{},\
+\"algorithm_phase_peak_rss_delta_mb\":{:.9},\
+\"algorithm_phase_vmrss_before_mb\":{:.9},\
+\"algorithm_phase_vmrss_after_mb\":{:.9},\
+\"algorithm_phase_vmhwm_before_mb\":{:.9},\
+\"algorithm_phase_vmhwm_after_mb\":{:.9}}}",
+        mean,
+        std,
+        algo_mem_proxy_available,
+        algo_peak_delta_mb,
+        vmrss_before_mb,
+        vmrss_after_mb,
+        vmhwm_before_mb,
+        vmhwm_after_mb
     );
 
     Ok(())

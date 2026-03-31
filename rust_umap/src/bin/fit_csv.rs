@@ -1,4 +1,4 @@
-use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, SparseCsrMatrix, UmapModel, UmapParams};
 use std::env;
 use std::error::Error;
 use std::fs::File;
@@ -30,9 +30,23 @@ fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
     }
 }
 
-fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>), Box<dyn Error>> {
+#[derive(Debug, Clone)]
+struct SparseInputArgs {
+    indptr_path: String,
+    indices_path: String,
+    data_path: String,
+    n_cols: usize,
+}
+
+fn extract_optional_args(
+    args: &mut Vec<String>,
+) -> Result<(Metric, Option<Metric>, Option<SparseInputArgs>), Box<dyn Error>> {
     let mut metric = Metric::Euclidean;
     let mut knn_metric: Option<Metric> = None;
+    let mut csr_indptr: Option<String> = None;
+    let mut csr_indices: Option<String> = None;
+    let mut csr_data: Option<String> = None;
+    let mut csr_n_cols: Option<usize> = None;
     let mut i = 1;
     while i < args.len() {
         if args[i] == "--metric" {
@@ -47,11 +61,53 @@ fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>
             }
             knn_metric = Some(parse_metric(&args[i + 1])?);
             args.drain(i..=i + 1);
+        } else if args[i] == "--csr-indptr" {
+            if i + 1 >= args.len() {
+                return Err("--csr-indptr requires a file path".into());
+            }
+            csr_indptr = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-indices" {
+            if i + 1 >= args.len() {
+                return Err("--csr-indices requires a file path".into());
+            }
+            csr_indices = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-data" {
+            if i + 1 >= args.len() {
+                return Err("--csr-data requires a file path".into());
+            }
+            csr_data = Some(args[i + 1].clone());
+            args.drain(i..=i + 1);
+        } else if args[i] == "--csr-n-cols" {
+            if i + 1 >= args.len() {
+                return Err("--csr-n-cols requires an integer value".into());
+            }
+            csr_n_cols = Some(args[i + 1].parse::<usize>()?);
+            args.drain(i..=i + 1);
         } else {
             i += 1;
         }
     }
-    Ok((metric, knn_metric))
+
+    let has_any_csr =
+        csr_indptr.is_some() || csr_indices.is_some() || csr_data.is_some() || csr_n_cols.is_some();
+    let sparse = if has_any_csr {
+        let indptr_path = csr_indptr.ok_or("--csr-indptr is required when using CSR input")?;
+        let indices_path = csr_indices.ok_or("--csr-indices is required when using CSR input")?;
+        let data_path = csr_data.ok_or("--csr-data is required when using CSR input")?;
+        let n_cols = csr_n_cols.ok_or("--csr-n-cols is required when using CSR input")?;
+        Some(SparseInputArgs {
+            indptr_path,
+            indices_path,
+            data_path,
+            n_cols,
+        })
+    } else {
+        None
+    };
+
+    Ok((metric, knn_metric, sparse))
 }
 
 fn read_csv(path: &Path) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
@@ -96,6 +152,64 @@ fn read_csv_usize(path: &Path) -> Result<Vec<Vec<usize>>, Box<dyn Error>> {
     Ok(data)
 }
 
+fn read_csv_flat_usize(path: &Path) -> Result<Vec<usize>, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut values = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for token in trimmed.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            values.push(token.parse::<usize>()?);
+        }
+    }
+
+    Ok(values)
+}
+
+fn read_csv_flat_f32(path: &Path) -> Result<Vec<f32>, Box<dyn Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let mut values = Vec::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        for token in trimmed.split(',') {
+            let token = token.trim();
+            if token.is_empty() {
+                continue;
+            }
+            values.push(token.parse::<f32>()?);
+        }
+    }
+
+    Ok(values)
+}
+
+fn read_sparse_csr(spec: &SparseInputArgs) -> Result<SparseCsrMatrix, Box<dyn Error>> {
+    let indptr = read_csv_flat_usize(Path::new(&spec.indptr_path))?;
+    let indices = read_csv_flat_usize(Path::new(&spec.indices_path))?;
+    let values = read_csv_flat_f32(Path::new(&spec.data_path))?;
+    if indptr.is_empty() {
+        return Err("csr indptr cannot be empty".into());
+    }
+    let n_rows = indptr.len() - 1;
+    SparseCsrMatrix::new(n_rows, spec.n_cols, indptr, indices, values)
+        .map_err(|e| -> Box<dyn Error> { Box::new(e) })
+}
+
 fn write_csv(path: &Path, arr: &[Vec<f32>]) -> Result<(), Box<dyn Error>> {
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -119,6 +233,7 @@ fn usage() {
           <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> \
           <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] \
           [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]\n\
+          Optional CSR input (fit mode only): --csr-indptr <path> --csr-indices <path> --csr-data <path> --csr-n-cols <n>\n\
           mode=fit_precomputed extra args: <knn_idx.csv> <knn_dist.csv>\n\
           mode=transform|inverse extra args: <ref_input.csv>"
     );
@@ -126,7 +241,7 @@ fn usage() {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let (metric, knn_metric_opt) = extract_metric_args(&mut args)?;
+    let (metric, knn_metric_opt, sparse_input) = extract_optional_args(&mut args)?;
     if args.len() < 12 {
         usage();
         return Err("insufficient arguments".into());
@@ -150,6 +265,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         "fit"
     };
+    if sparse_input.is_some() && mode != "fit" {
+        return Err("CSR input is currently supported in fit mode only".into());
+    }
     if mode != "fit_precomputed" && knn_metric_opt.is_some() {
         return Err("--knn-metric is only valid in fit_precomputed mode".into());
     }
@@ -178,8 +296,13 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     match mode {
         "fit" => {
-            let x = read_csv(input_path)?;
-            let emb = model.fit_transform(&x)?;
+            let emb = if let Some(spec) = sparse_input.as_ref() {
+                let x_csr = read_sparse_csr(spec)?;
+                model.fit_transform_sparse_csr(x_csr)?
+            } else {
+                let x = read_csv(input_path)?;
+                model.fit_transform(&x)?
+            };
             write_csv(output_path, &emb)?;
         }
         "fit_precomputed" => {

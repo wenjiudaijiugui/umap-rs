@@ -20,6 +20,11 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
   - `fit`
 - New point embedding API:
   - `transform`
+- Sparse CSR input MVP:
+  - `SparseCsrMatrix` + `fit_sparse_csr` / `fit_transform_sparse_csr`
+  - Exact Euclidean sparse kNN (no full dense distance matrix materialization)
+  - `fit_csv` / `bench_fit_csv` support `--csr-indptr/--csr-indices/--csr-data/--csr-n-cols`
+  - Sparse `inverse_transform` is intentionally unsupported in this MVP
 - Approximate inverse mapping API:
   - `inverse_transform` (Euclidean metric in embedding space)
   - Exact training-embedding lookups are mapped back to their original samples
@@ -32,7 +37,8 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 ## What is intentionally out of scope (for this version)
 
 - Full `pynndescent`-equivalent ANN quality/performance parity
-- Sparse input support
+- Sparse path parity for non-Euclidean metrics
+- Sparse-trained inverse transform
 
 ## Quick start
 
@@ -63,6 +69,19 @@ cargo run --release --bin fit_csv -- \
   --metric cosine
 ```
 
+For sparse CSR input (`fit` mode), pass CSR arrays directly:
+
+```bash
+cargo run --release --bin fit_csv -- \
+  dummy.csv embedding.csv \
+  15 2 200 42 random false 30 10 4096 fit \
+  --metric euclidean \
+  --csr-indptr indptr.csv \
+  --csr-indices indices.csv \
+  --csr-data values.csv \
+  --csr-n-cols 1800
+```
+
 For precomputed kNN input, add explicit metric guard:
 
 ```bash
@@ -81,6 +100,13 @@ cargo run --release --bin bench_fit_csv -- \
   data.csv embedding.csv \
   15 2 200 42 spectral false 30 10 4096 1 5 \
   --metric manhattan
+```
+
+To benchmark sparse CSR fits against `umap-learn` (consistency + speed + memory):
+
+```bash
+uv run --with numpy --with scipy --with scikit-learn --with umap-learn \
+  python rust_umap/benchmarks/eval_sparse_csr_vs_umap_learn.py --dataset all
 ```
 
 ## Minimal library usage
@@ -104,6 +130,28 @@ let embedding = model.fit_transform(&data)?;
 let new_points = vec![vec![0.1, 0.1, 0.2]];
 let transformed = model.transform(&new_points)?;
 let reconstructed = model.inverse_transform(&transformed)?;
+```
+
+Minimal sparse usage:
+
+```rust
+use rust_umap::{fit_transform_sparse_csr, Metric, SparseCsrMatrix, UmapParams};
+
+let csr = SparseCsrMatrix::new(
+    3,
+    5,
+    vec![0, 2, 3, 5],
+    vec![0, 3, 1, 0, 4],
+    vec![1.0, 2.0, 3.0, 4.0, 5.0],
+)?;
+
+let embedding = fit_transform_sparse_csr(
+    csr,
+    UmapParams {
+        metric: Metric::Euclidean,
+        ..UmapParams::default()
+    },
+)?;
 ```
 
 ## Notes on fidelity

@@ -11,6 +11,8 @@ pub mod aligned;
 pub use aligned::{AlignedUmapError, AlignedUmapModel, AlignedUmapParams, AlignmentRelation};
 pub mod parametric;
 pub use parametric::{ParametricTrainMode, ParametricUmapModel, ParametricUmapParams};
+pub mod sparse;
+pub use sparse::SparseCsrMatrix;
 
 const SMOOTH_K_TOLERANCE: f32 = 1e-5;
 const MIN_K_DIST_SCALE: f32 = 1e-3;
@@ -151,6 +153,7 @@ pub struct UmapModel {
     b: f32,
     embedding: Option<Vec<Vec<f32>>>,
     training_data: Option<Vec<Vec<f32>>>,
+    training_data_sparse: Option<SparseCsrMatrix>,
     n_features: Option<usize>,
     fit_sigmas: Option<Vec<f32>>,
     fit_rhos: Option<Vec<f32>>,
@@ -164,6 +167,7 @@ impl UmapModel {
             b: 0.0,
             embedding: None,
             training_data: None,
+            training_data_sparse: None,
             n_features: None,
             fit_sigmas: None,
             fit_rhos: None,
@@ -209,6 +213,35 @@ impl UmapModel {
             };
 
         self.fit_transform_with_knn_internal(data, &knn_indices, &knn_dists)
+    }
+
+    pub fn fit_sparse_csr(&mut self, data: SparseCsrMatrix) -> Result<(), UmapError> {
+        self.fit_transform_sparse_csr(data).map(|_| ())
+    }
+
+    pub fn fit_transform_sparse_csr(
+        &mut self,
+        data: SparseCsrMatrix,
+    ) -> Result<Vec<Vec<f32>>, UmapError> {
+        let n_samples = data.n_rows();
+        let n_features = data.n_cols();
+        if n_samples == 0 {
+            return Err(UmapError::EmptyData);
+        }
+        if n_samples < 2 {
+            return Err(UmapError::NeedAtLeastTwoSamples);
+        }
+
+        validate_params(&self.params, n_samples, n_features)?;
+        if self.params.metric != Metric::Euclidean {
+            return Err(UmapError::InvalidParameter(
+                "sparse CSR fit currently supports euclidean metric only".to_string(),
+            ));
+        }
+
+        let (knn_indices, knn_dists) =
+            sparse::exact_nearest_neighbors_euclidean(&data, self.params.n_neighbors);
+        self.fit_transform_with_knn_sparse_internal(data, &knn_indices, &knn_dists)
     }
 
     pub fn fit_transform_with_knn(
@@ -323,6 +356,103 @@ impl UmapModel {
 
         self.embedding = Some(embedding.clone());
         self.training_data = Some(data.to_vec());
+        self.training_data_sparse = None;
+        self.n_features = Some(n_features);
+        self.fit_sigmas = Some(sigmas);
+        self.fit_rhos = Some(rhos);
+
+        Ok(embedding)
+    }
+
+    fn fit_transform_with_knn_sparse_internal(
+        &mut self,
+        data: SparseCsrMatrix,
+        knn_indices: &[Vec<usize>],
+        knn_dists: &[Vec<f32>],
+    ) -> Result<Vec<Vec<f32>>, UmapError> {
+        let n_samples = data.n_rows();
+        let n_features = data.n_cols();
+        validate_params(&self.params, n_samples, n_features)?;
+
+        let n_epochs = self
+            .params
+            .n_epochs
+            .unwrap_or_else(|| if n_samples <= 10_000 { 500 } else { 200 });
+
+        let (a, b) = find_ab_params(self.params.spread, self.params.min_dist);
+        self.a = a;
+        self.b = b;
+
+        if knn_indices.len() != n_samples || knn_dists.len() != n_samples {
+            return Err(UmapError::InvalidParameter(
+                "precomputed knn row count must match number of samples".to_string(),
+            ));
+        }
+
+        let mut knn_indices_trimmed = Vec::with_capacity(n_samples);
+        let mut knn_dists_trimmed = Vec::with_capacity(n_samples);
+        for row in 0..n_samples {
+            let idx_row = &knn_indices[row];
+            let dist_row = &knn_dists[row];
+            if idx_row.len() < self.params.n_neighbors || dist_row.len() < self.params.n_neighbors {
+                return Err(UmapError::InvalidParameter(
+                    "precomputed knn columns must be >= n_neighbors".to_string(),
+                ));
+            }
+            if idx_row.len() != dist_row.len() {
+                return Err(UmapError::InvalidParameter(
+                    "precomputed knn index/dist row lengths must match".to_string(),
+                ));
+            }
+
+            let idx_trim = idx_row[..self.params.n_neighbors].to_vec();
+            for &idx in &idx_trim {
+                if idx >= n_samples {
+                    return Err(UmapError::InvalidParameter(
+                        "precomputed knn index out of range".to_string(),
+                    ));
+                }
+            }
+            let dist_trim = dist_row[..self.params.n_neighbors].to_vec();
+            knn_indices_trimmed.push(idx_trim);
+            knn_dists_trimmed.push(dist_trim);
+        }
+
+        let (sigmas, rhos) = smooth_knn_dist(
+            &knn_dists_trimmed,
+            self.params.n_neighbors as f32,
+            self.params.local_connectivity,
+            DEFAULT_BANDWIDTH,
+        );
+
+        let directed =
+            compute_membership_strengths(&knn_indices_trimmed, &knn_dists_trimmed, &sigmas, &rhos);
+        let mut edges = symmetrize_fuzzy_graph(&directed, self.params.set_op_mix_ratio);
+        prune_edges(&mut edges, n_epochs);
+
+        let mut embedding = initialize_embedding_sparse(
+            &data,
+            self.params.n_components,
+            &edges,
+            self.params.init,
+            self.params.random_seed,
+        );
+
+        optimize_layout_training(
+            &mut embedding,
+            &edges,
+            n_epochs,
+            a,
+            b,
+            self.params.learning_rate,
+            self.params.negative_sample_rate,
+            self.params.repulsion_strength,
+            self.params.random_seed ^ 0x9E37_79B9_7F4A_7C15,
+        );
+
+        self.embedding = Some(embedding.clone());
+        self.training_data = None;
+        self.training_data_sparse = Some(data);
         self.n_features = Some(n_features);
         self.fit_sigmas = Some(sigmas);
         self.fit_rhos = Some(rhos);
@@ -331,9 +461,13 @@ impl UmapModel {
     }
 
     pub fn transform(&self, query: &[Vec<f32>]) -> Result<Vec<Vec<f32>>, UmapError> {
-        let train_data = self.training_data.as_ref().ok_or(UmapError::NotFitted)?;
         let train_embedding = self.embedding.as_ref().ok_or(UmapError::NotFitted)?;
         let expected_features = self.n_features.ok_or(UmapError::NotFitted)?;
+        let train_data_dense = self.training_data.as_ref();
+        let train_data_sparse = self.training_data_sparse.as_ref();
+        if train_data_dense.is_none() && train_data_sparse.is_none() {
+            return Err(UmapError::NotFitted);
+        }
 
         if query.is_empty() {
             return Ok(Vec::new());
@@ -355,7 +489,14 @@ impl UmapModel {
             }
         }
 
-        let n_neighbors = self.params.n_neighbors.min(train_data.len());
+        let n_train = if let Some(train_data) = train_data_dense {
+            train_data.len()
+        } else if let Some(train_data) = train_data_sparse {
+            train_data.n_rows()
+        } else {
+            return Err(UmapError::NotFitted);
+        };
+        let n_neighbors = self.params.n_neighbors.min(n_train);
         let n_epochs = match self.params.n_epochs {
             None => {
                 if query.len() <= 10_000 {
@@ -367,12 +508,18 @@ impl UmapModel {
             Some(e) => (e / 3).max(1),
         };
 
-        let (indices, dists) = exact_nearest_neighbors_to_reference(
-            query,
-            train_data,
-            n_neighbors,
-            self.params.metric,
-        );
+        let (indices, dists) = if let Some(train_data) = train_data_dense {
+            exact_nearest_neighbors_to_reference(query, train_data, n_neighbors, self.params.metric)
+        } else if let Some(train_data) = train_data_sparse {
+            if self.params.metric != Metric::Euclidean {
+                return Err(UmapError::InvalidParameter(
+                    "sparse-trained transform currently supports euclidean metric only".to_string(),
+                ));
+            }
+            sparse::exact_nearest_neighbors_dense_query_euclidean(query, train_data, n_neighbors)?
+        } else {
+            return Err(UmapError::NotFitted);
+        };
 
         let adjusted_local_connectivity = (self.params.local_connectivity - 1.0).max(0.0);
         let (sigmas, rhos) = smooth_knn_dist(
@@ -412,7 +559,15 @@ impl UmapModel {
         &self,
         embedded_query: &[Vec<f32>],
     ) -> Result<Vec<Vec<f32>>, UmapError> {
-        let train_data = self.training_data.as_ref().ok_or(UmapError::NotFitted)?;
+        let train_data = if let Some(train_data) = self.training_data.as_ref() {
+            train_data
+        } else if self.training_data_sparse.is_some() {
+            return Err(UmapError::InvalidParameter(
+                "inverse_transform is not supported for sparse-trained models yet".to_string(),
+            ));
+        } else {
+            return Err(UmapError::NotFitted);
+        };
         let train_embedding = self.embedding.as_ref().ok_or(UmapError::NotFitted)?;
         let fit_sigmas = self.fit_sigmas.as_ref().ok_or(UmapError::NotFitted)?;
         let fit_rhos = self.fit_rhos.as_ref().ok_or(UmapError::NotFitted)?;
@@ -515,6 +670,14 @@ impl UmapModel {
 pub fn fit_transform(data: &[Vec<f32>], params: UmapParams) -> Result<Vec<Vec<f32>>, UmapError> {
     let mut model = UmapModel::new(params);
     model.fit_transform(data)
+}
+
+pub fn fit_transform_sparse_csr(
+    data: SparseCsrMatrix,
+    params: UmapParams,
+) -> Result<Vec<Vec<f32>>, UmapError> {
+    let mut model = UmapModel::new(params);
+    model.fit_transform_sparse_csr(data)
 }
 
 fn validate_data(data: &[Vec<f32>]) -> Result<(usize, usize), UmapError> {
@@ -1566,6 +1729,21 @@ fn initialize_embedding(
     }
 }
 
+fn initialize_embedding_sparse(
+    data: &SparseCsrMatrix,
+    n_components: usize,
+    edges: &[Edge],
+    init: InitMethod,
+    seed: u64,
+) -> Vec<Vec<f32>> {
+    let n_samples = data.n_rows();
+    match init {
+        InitMethod::Random => random_init(n_samples, n_components, seed, -10.0, 10.0),
+        InitMethod::Spectral => spectral_init_sparse(data, n_components, edges, seed)
+            .unwrap_or_else(|| random_init(n_samples, n_components, seed, -10.0, 10.0)),
+    }
+}
+
 fn spectral_init(
     data: &[Vec<f32>],
     n_components: usize,
@@ -1580,6 +1758,25 @@ fn spectral_init(
     let components = connected_components_from_edges(n_samples, edges);
     if components.len() > 1 {
         return multi_component_spectral_init(data, n_components, edges, &components, seed);
+    }
+
+    spectral_init_connected(n_samples, n_components, edges, seed)
+}
+
+fn spectral_init_sparse(
+    data: &SparseCsrMatrix,
+    n_components: usize,
+    edges: &[Edge],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let n_samples = data.n_rows();
+    if n_samples <= n_components + 1 || edges.is_empty() {
+        return None;
+    }
+
+    let components = connected_components_from_edges(n_samples, edges);
+    if components.len() > 1 {
+        return multi_component_spectral_init_sparse(data, n_components, edges, &components, seed);
     }
 
     spectral_init_connected(n_samples, n_components, edges, seed)
@@ -1822,7 +2019,7 @@ fn remap_component_edges(
     out
 }
 
-fn component_centroids(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<f64>> {
+fn component_centroids_dense(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<f64>> {
     let n_features = data[0].len();
     let mut centroids = Vec::with_capacity(components.len());
 
@@ -1830,6 +2027,28 @@ fn component_centroids(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<
         let mut centroid = vec![0.0_f64; n_features];
         for &idx in component {
             for (feature_idx, &value) in data[idx].iter().enumerate() {
+                centroid[feature_idx] += value as f64;
+            }
+        }
+        let scale = 1.0 / component.len() as f64;
+        for value in centroid.iter_mut() {
+            *value *= scale;
+        }
+        centroids.push(centroid);
+    }
+
+    centroids
+}
+
+fn component_centroids_sparse(data: &SparseCsrMatrix, components: &[Vec<usize>]) -> Vec<Vec<f64>> {
+    let n_features = data.n_cols();
+    let mut centroids = Vec::with_capacity(components.len());
+
+    for component in components {
+        let mut centroid = vec![0.0_f64; n_features];
+        for &idx in component {
+            let (row_indices, row_values) = data.row(idx);
+            for (&feature_idx, &value) in row_indices.iter().zip(row_values.iter()) {
                 centroid[feature_idx] += value as f64;
             }
         }
@@ -1853,13 +2072,12 @@ fn squared_distance_f64(x: &[f64], y: &[f64]) -> f64 {
         .sum()
 }
 
-fn meta_component_layout(
-    data: &[Vec<f32>],
+fn meta_component_layout_from_centroids(
+    centroids: &[Vec<f64>],
     embedding_dim: usize,
-    components: &[Vec<usize>],
     seed: u64,
 ) -> Option<Vec<Vec<f32>>> {
-    let n_graph_components = components.len();
+    let n_graph_components = centroids.len();
     if n_graph_components == 0 {
         return None;
     }
@@ -1877,7 +2095,6 @@ fn meta_component_layout(
         return Some(layout);
     }
 
-    let centroids = component_centroids(data, components);
     let mut affinity = vec![vec![0.0_f64; n_graph_components]; n_graph_components];
     for i in 0..n_graph_components {
         affinity[i][i] = 1.0;
@@ -1890,6 +2107,26 @@ fn meta_component_layout(
     }
 
     spectral_embedding_from_affinity(&affinity, embedding_dim, true, seed ^ 0xC85E_7D6A_DA31_8F21)
+}
+
+fn meta_component_layout(
+    data: &[Vec<f32>],
+    embedding_dim: usize,
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let centroids = component_centroids_dense(data, components);
+    meta_component_layout_from_centroids(&centroids, embedding_dim, seed)
+}
+
+fn meta_component_layout_sparse(
+    data: &SparseCsrMatrix,
+    embedding_dim: usize,
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let centroids = component_centroids_sparse(data, components);
+    meta_component_layout_from_centroids(&centroids, embedding_dim, seed)
 }
 
 fn spectral_embedding_from_affinity(
@@ -1964,7 +2201,57 @@ fn multi_component_spectral_init(
     components: &[Vec<usize>],
     seed: u64,
 ) -> Option<Vec<Vec<f32>>> {
-    let n_samples = data.len();
+    let component_layout = meta_component_layout(
+        data,
+        embedding_dim,
+        components,
+        seed ^ 0xA13F_52A9_2D4C_B801,
+    )?;
+    multi_component_spectral_init_with_layout(
+        data.len(),
+        embedding_dim,
+        edges,
+        components,
+        &component_layout,
+        seed,
+    )
+}
+
+fn multi_component_spectral_init_sparse(
+    data: &SparseCsrMatrix,
+    embedding_dim: usize,
+    edges: &[Edge],
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let component_layout = meta_component_layout_sparse(
+        data,
+        embedding_dim,
+        components,
+        seed ^ 0xA13F_52A9_2D4C_B801,
+    )?;
+    multi_component_spectral_init_with_layout(
+        data.n_rows(),
+        embedding_dim,
+        edges,
+        components,
+        &component_layout,
+        seed,
+    )
+}
+
+fn multi_component_spectral_init_with_layout(
+    n_samples: usize,
+    embedding_dim: usize,
+    edges: &[Edge],
+    components: &[Vec<usize>],
+    component_layout: &[Vec<f32>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    if component_layout.len() != components.len() {
+        return None;
+    }
+
     let mut component_labels = vec![usize::MAX; n_samples];
     for (component_id, component) in components.iter().enumerate() {
         for &idx in component {
@@ -1972,12 +2259,6 @@ fn multi_component_spectral_init(
         }
     }
 
-    let component_layout = meta_component_layout(
-        data,
-        embedding_dim,
-        components,
-        seed ^ 0xA13F_52A9_2D4C_B801,
-    )?;
     let mut result = vec![vec![0.0_f32; embedding_dim]; n_samples];
 
     for (component_id, component) in components.iter().enumerate() {
@@ -2675,6 +2956,39 @@ mod tests {
         data
     }
 
+    fn sparse_like_data(n: usize, dim: usize) -> Vec<Vec<f32>> {
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            let mut row = vec![0.0_f32; dim];
+            for t in 0..5 {
+                let col = (i * 17 + t * 13 + (i % 3) * 7) % dim;
+                row[col] = ((i + 1) as f32 * (t + 2) as f32) * 0.017 + col as f32 * 1e-4;
+            }
+            data.push(row);
+        }
+        data
+    }
+
+    fn dense_to_csr(data: &[Vec<f32>]) -> SparseCsrMatrix {
+        let n_rows = data.len();
+        let n_cols = data[0].len();
+        let mut indptr = Vec::with_capacity(n_rows + 1);
+        let mut indices = Vec::new();
+        let mut values = Vec::new();
+        indptr.push(0);
+        for row in data {
+            for (col, &v) in row.iter().enumerate() {
+                if v != 0.0 {
+                    indices.push(col);
+                    values.push(v);
+                }
+            }
+            indptr.push(indices.len());
+        }
+        SparseCsrMatrix::new(n_rows, n_cols, indptr, indices, values)
+            .expect("dense_to_csr should produce a valid CSR matrix")
+    }
+
     fn disconnected_component_data(
         n_components: usize,
         points_per_component: usize,
@@ -2894,6 +3208,90 @@ mod tests {
     }
 
     #[test]
+    fn sparse_csr_knn_matches_dense_euclidean() {
+        let data = sparse_like_data(42, 61);
+        let csr = dense_to_csr(&data);
+        let k = 12;
+
+        let (dense_idx, dense_dist) = exact_nearest_neighbors(&data, k, Metric::Euclidean);
+        let (sparse_idx, sparse_dist) = sparse::exact_nearest_neighbors_euclidean(&csr, k);
+
+        assert_eq!(dense_idx, sparse_idx);
+        for (row_dense, row_sparse) in dense_dist.iter().zip(sparse_dist.iter()) {
+            for (&lhs, &rhs) in row_dense.iter().zip(row_sparse.iter()) {
+                assert!(
+                    (lhs - rhs).abs() <= 1e-5,
+                    "distance mismatch: dense={lhs}, sparse={rhs}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_csr_fit_transform_and_transform_work() {
+        let data = sparse_like_data(72, 80);
+        let query = data.iter().take(10).cloned().collect::<Vec<Vec<f32>>>();
+        let csr = dense_to_csr(&data);
+
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 2026,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse fit should succeed");
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+
+        let transformed = model
+            .transform(&query)
+            .expect("sparse transform should succeed");
+        assert_eq!(transformed.len(), query.len());
+        assert_eq!(transformed[0].len(), 2);
+        assert_all_finite(&transformed);
+    }
+
+    #[test]
+    fn sparse_csr_random_fit_matches_dense_fit() {
+        let data = sparse_like_data(64, 97);
+        let csr = dense_to_csr(&data);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(40),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 77,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let (knn_idx, knn_dist) =
+            sparse::exact_nearest_neighbors_euclidean(&csr, params.n_neighbors);
+
+        let mut dense_model = UmapModel::new(params.clone());
+        let dense_embedding = dense_model
+            .fit_transform_with_knn_metric(&data, &knn_idx, &knn_dist, Metric::Euclidean)
+            .expect("dense fit should succeed");
+
+        let mut sparse_model = UmapModel::new(params);
+        let sparse_embedding = sparse_model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse fit should succeed");
+
+        assert_eq!(dense_embedding, sparse_embedding);
+    }
+
+    #[test]
     fn approximate_knn_path_runs() {
         let data = synthetic_data(90, 7);
         let params = UmapParams {
@@ -3054,6 +3452,34 @@ mod tests {
     }
 
     #[test]
+    fn sparse_spectral_init_disconnected_not_random_fallback() {
+        let (data, labels) = disconnected_component_data(4, 60);
+        let csr = dense_to_csr(&data);
+        let n_neighbors = 10;
+        let (knn_indices, knn_dists) = sparse::exact_nearest_neighbors_euclidean(&csr, n_neighbors);
+        let (sigmas, rhos) =
+            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH);
+        let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
+        let edges = symmetrize_fuzzy_graph(&directed, 1.0);
+
+        let spectral =
+            spectral_init_sparse(&csr, 2, &edges, 42).expect("sparse spectral init should succeed");
+        let random = random_init(data.len(), 2, 42, -10.0, 10.0);
+
+        assert_ne!(
+            spectral, random,
+            "sparse disconnected spectral initialization should not degenerate to pure random init"
+        );
+
+        let spectral_ratio = separation_ratio(&spectral, &labels, 4);
+        let random_ratio = separation_ratio(&random, &labels, 4);
+        assert!(
+            spectral_ratio > random_ratio * 1.2,
+            "expected sparse disconnected spectral init to separate components better than random: spectral={spectral_ratio}, random={random_ratio}"
+        );
+    }
+
+    #[test]
     fn spectral_init_handles_disconnected_components() {
         let (data, labels) = disconnected_component_data(4, 60);
         let params = UmapParams {
@@ -3084,6 +3510,44 @@ mod tests {
         assert!(
             sep_ratio > 1.5,
             "expected inter-component separation ratio to stay robust, got {sep_ratio}"
+        );
+    }
+
+    #[test]
+    fn sparse_spectral_init_handles_disconnected_components() {
+        let (data, labels) = disconnected_component_data(4, 60);
+        let csr = dense_to_csr(&data);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(60),
+            metric: Metric::Euclidean,
+            init: InitMethod::Spectral,
+            random_seed: 42,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse fit should succeed");
+
+        let max_std = max_component_std(&embedding, &labels, 4);
+        let min_distance = min_centroid_distance(&embedding, &labels, 4);
+        let sep_ratio = separation_ratio(&embedding, &labels, 4);
+
+        assert!(
+            max_std > 0.05,
+            "expected each sparse disconnected component to keep non-trivial internal spread, got {max_std}"
+        );
+        assert!(
+            min_distance > 0.8,
+            "expected sparse disconnected component centroids to remain separated after optimization, got {min_distance}"
+        );
+        assert!(
+            sep_ratio > 1.1,
+            "expected sparse inter-component separation ratio to stay robust, got {sep_ratio}"
         );
     }
 }
