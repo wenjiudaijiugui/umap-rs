@@ -9,6 +9,8 @@ use std::fmt::{Display, Formatter};
 
 pub mod aligned;
 pub use aligned::{AlignedUmapError, AlignedUmapModel, AlignedUmapParams, AlignmentRelation};
+pub mod parametric;
+pub use parametric::{ParametricTrainMode, ParametricUmapModel, ParametricUmapParams};
 
 const SMOOTH_K_TOLERANCE: f32 = 1e-5;
 const MIN_K_DIST_SCALE: f32 = 1e-3;
