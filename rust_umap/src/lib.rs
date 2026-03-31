@@ -427,7 +427,7 @@ impl UmapModel {
         prune_edges(&mut edges, n_epochs);
 
         let mut embedding = initialize_embedding_sparse(
-            n_samples,
+            &data,
             self.params.n_components,
             &edges,
             self.params.init,
@@ -1726,15 +1726,16 @@ fn initialize_embedding(
 }
 
 fn initialize_embedding_sparse(
-    n_samples: usize,
+    data: &SparseCsrMatrix,
     n_components: usize,
     edges: &[Edge],
     init: InitMethod,
     seed: u64,
 ) -> Vec<Vec<f32>> {
+    let n_samples = data.n_rows();
     match init {
         InitMethod::Random => random_init(n_samples, n_components, seed, -10.0, 10.0),
-        InitMethod::Spectral => spectral_init_connected(n_samples, n_components, edges, seed)
+        InitMethod::Spectral => spectral_init_sparse(data, n_components, edges, seed)
             .unwrap_or_else(|| random_init(n_samples, n_components, seed, -10.0, 10.0)),
     }
 }
@@ -1753,6 +1754,25 @@ fn spectral_init(
     let components = connected_components_from_edges(n_samples, edges);
     if components.len() > 1 {
         return multi_component_spectral_init(data, n_components, edges, &components, seed);
+    }
+
+    spectral_init_connected(n_samples, n_components, edges, seed)
+}
+
+fn spectral_init_sparse(
+    data: &SparseCsrMatrix,
+    n_components: usize,
+    edges: &[Edge],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let n_samples = data.n_rows();
+    if n_samples <= n_components + 1 || edges.is_empty() {
+        return None;
+    }
+
+    let components = connected_components_from_edges(n_samples, edges);
+    if components.len() > 1 {
+        return multi_component_spectral_init_sparse(data, n_components, edges, &components, seed);
     }
 
     spectral_init_connected(n_samples, n_components, edges, seed)
@@ -1995,7 +2015,7 @@ fn remap_component_edges(
     out
 }
 
-fn component_centroids(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<f64>> {
+fn component_centroids_dense(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<f64>> {
     let n_features = data[0].len();
     let mut centroids = Vec::with_capacity(components.len());
 
@@ -2003,6 +2023,28 @@ fn component_centroids(data: &[Vec<f32>], components: &[Vec<usize>]) -> Vec<Vec<
         let mut centroid = vec![0.0_f64; n_features];
         for &idx in component {
             for (feature_idx, &value) in data[idx].iter().enumerate() {
+                centroid[feature_idx] += value as f64;
+            }
+        }
+        let scale = 1.0 / component.len() as f64;
+        for value in centroid.iter_mut() {
+            *value *= scale;
+        }
+        centroids.push(centroid);
+    }
+
+    centroids
+}
+
+fn component_centroids_sparse(data: &SparseCsrMatrix, components: &[Vec<usize>]) -> Vec<Vec<f64>> {
+    let n_features = data.n_cols();
+    let mut centroids = Vec::with_capacity(components.len());
+
+    for component in components {
+        let mut centroid = vec![0.0_f64; n_features];
+        for &idx in component {
+            let (row_indices, row_values) = data.row(idx);
+            for (&feature_idx, &value) in row_indices.iter().zip(row_values.iter()) {
                 centroid[feature_idx] += value as f64;
             }
         }
@@ -2026,13 +2068,12 @@ fn squared_distance_f64(x: &[f64], y: &[f64]) -> f64 {
         .sum()
 }
 
-fn meta_component_layout(
-    data: &[Vec<f32>],
+fn meta_component_layout_from_centroids(
+    centroids: &[Vec<f64>],
     embedding_dim: usize,
-    components: &[Vec<usize>],
     seed: u64,
 ) -> Option<Vec<Vec<f32>>> {
-    let n_graph_components = components.len();
+    let n_graph_components = centroids.len();
     if n_graph_components == 0 {
         return None;
     }
@@ -2050,7 +2091,6 @@ fn meta_component_layout(
         return Some(layout);
     }
 
-    let centroids = component_centroids(data, components);
     let mut affinity = vec![vec![0.0_f64; n_graph_components]; n_graph_components];
     for i in 0..n_graph_components {
         affinity[i][i] = 1.0;
@@ -2063,6 +2103,26 @@ fn meta_component_layout(
     }
 
     spectral_embedding_from_affinity(&affinity, embedding_dim, true, seed ^ 0xC85E_7D6A_DA31_8F21)
+}
+
+fn meta_component_layout(
+    data: &[Vec<f32>],
+    embedding_dim: usize,
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let centroids = component_centroids_dense(data, components);
+    meta_component_layout_from_centroids(&centroids, embedding_dim, seed)
+}
+
+fn meta_component_layout_sparse(
+    data: &SparseCsrMatrix,
+    embedding_dim: usize,
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let centroids = component_centroids_sparse(data, components);
+    meta_component_layout_from_centroids(&centroids, embedding_dim, seed)
 }
 
 fn spectral_embedding_from_affinity(
@@ -2137,7 +2197,57 @@ fn multi_component_spectral_init(
     components: &[Vec<usize>],
     seed: u64,
 ) -> Option<Vec<Vec<f32>>> {
-    let n_samples = data.len();
+    let component_layout = meta_component_layout(
+        data,
+        embedding_dim,
+        components,
+        seed ^ 0xA13F_52A9_2D4C_B801,
+    )?;
+    multi_component_spectral_init_with_layout(
+        data.len(),
+        embedding_dim,
+        edges,
+        components,
+        &component_layout,
+        seed,
+    )
+}
+
+fn multi_component_spectral_init_sparse(
+    data: &SparseCsrMatrix,
+    embedding_dim: usize,
+    edges: &[Edge],
+    components: &[Vec<usize>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    let component_layout = meta_component_layout_sparse(
+        data,
+        embedding_dim,
+        components,
+        seed ^ 0xA13F_52A9_2D4C_B801,
+    )?;
+    multi_component_spectral_init_with_layout(
+        data.n_rows(),
+        embedding_dim,
+        edges,
+        components,
+        &component_layout,
+        seed,
+    )
+}
+
+fn multi_component_spectral_init_with_layout(
+    n_samples: usize,
+    embedding_dim: usize,
+    edges: &[Edge],
+    components: &[Vec<usize>],
+    component_layout: &[Vec<f32>],
+    seed: u64,
+) -> Option<Vec<Vec<f32>>> {
+    if component_layout.len() != components.len() {
+        return None;
+    }
+
     let mut component_labels = vec![usize::MAX; n_samples];
     for (component_id, component) in components.iter().enumerate() {
         for &idx in component {
@@ -2145,12 +2255,6 @@ fn multi_component_spectral_init(
         }
     }
 
-    let component_layout = meta_component_layout(
-        data,
-        embedding_dim,
-        components,
-        seed ^ 0xA13F_52A9_2D4C_B801,
-    )?;
     let mut result = vec![vec![0.0_f32; embedding_dim]; n_samples];
 
     for (component_id, component) in components.iter().enumerate() {
@@ -3344,6 +3448,34 @@ mod tests {
     }
 
     #[test]
+    fn sparse_spectral_init_disconnected_not_random_fallback() {
+        let (data, labels) = disconnected_component_data(4, 60);
+        let csr = dense_to_csr(&data);
+        let n_neighbors = 10;
+        let (knn_indices, knn_dists) = sparse::exact_nearest_neighbors_euclidean(&csr, n_neighbors);
+        let (sigmas, rhos) =
+            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH);
+        let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
+        let edges = symmetrize_fuzzy_graph(&directed, 1.0);
+
+        let spectral =
+            spectral_init_sparse(&csr, 2, &edges, 42).expect("sparse spectral init should succeed");
+        let random = random_init(data.len(), 2, 42, -10.0, 10.0);
+
+        assert_ne!(
+            spectral, random,
+            "sparse disconnected spectral initialization should not degenerate to pure random init"
+        );
+
+        let spectral_ratio = separation_ratio(&spectral, &labels, 4);
+        let random_ratio = separation_ratio(&random, &labels, 4);
+        assert!(
+            spectral_ratio > random_ratio * 1.2,
+            "expected sparse disconnected spectral init to separate components better than random: spectral={spectral_ratio}, random={random_ratio}"
+        );
+    }
+
+    #[test]
     fn spectral_init_handles_disconnected_components() {
         let (data, labels) = disconnected_component_data(4, 60);
         let params = UmapParams {
@@ -3374,6 +3506,44 @@ mod tests {
         assert!(
             sep_ratio > 1.5,
             "expected inter-component separation ratio to stay robust, got {sep_ratio}"
+        );
+    }
+
+    #[test]
+    fn sparse_spectral_init_handles_disconnected_components() {
+        let (data, labels) = disconnected_component_data(4, 60);
+        let csr = dense_to_csr(&data);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(60),
+            metric: Metric::Euclidean,
+            init: InitMethod::Spectral,
+            random_seed: 42,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse fit should succeed");
+
+        let max_std = max_component_std(&embedding, &labels, 4);
+        let min_distance = min_centroid_distance(&embedding, &labels, 4);
+        let sep_ratio = separation_ratio(&embedding, &labels, 4);
+
+        assert!(
+            max_std > 0.05,
+            "expected each sparse disconnected component to keep non-trivial internal spread, got {max_std}"
+        );
+        assert!(
+            min_distance > 0.8,
+            "expected sparse disconnected component centroids to remain separated after optimization, got {min_distance}"
+        );
+        assert!(
+            sep_ratio > 1.1,
+            "expected sparse inter-component separation ratio to stay robust, got {sep_ratio}"
         );
     }
 }

@@ -1,7 +1,7 @@
 use rust_umap::{InitMethod, Metric, SparseCsrMatrix, UmapModel, UmapParams};
 use std::env;
 use std::error::Error;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::time::Instant;
@@ -257,6 +257,17 @@ fn mean_std(vals: &[f64]) -> (f64, f64) {
     (mean, var.sqrt())
 }
 
+fn read_proc_status_kb(field: &str) -> Option<u64> {
+    let status = fs::read_to_string("/proc/self/status").ok()?;
+    for line in status.lines() {
+        if let Some(rest) = line.strip_prefix(field) {
+            let value = rest.split_whitespace().next()?;
+            return value.parse::<u64>().ok();
+        }
+    }
+    None
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
     let (metric, knn_metric_opt, sparse_input) = extract_optional_args(&mut args)?;
@@ -330,6 +341,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let total = warmup + repeats;
     let mut times = Vec::with_capacity(repeats);
     let mut last_embedding: Option<Vec<Vec<f32>>> = None;
+    let vmhwm_before = read_proc_status_kb("VmHWM:");
+    let vmrss_before = read_proc_status_kb("VmRSS:");
 
     for i in 0..total {
         let mut model = UmapModel::new(params.clone());
@@ -353,12 +366,27 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         last_embedding = Some(embedding);
     }
+    let vmhwm_after = read_proc_status_kb("VmHWM:");
+    let vmrss_after = read_proc_status_kb("VmRSS:");
 
     if let Some(embedding) = last_embedding.as_ref() {
         write_csv(output_path, embedding)?;
     }
 
     let (mean, std) = mean_std(&times);
+    let algo_mem_proxy_available = vmhwm_before.is_some()
+        && vmhwm_after.is_some()
+        && vmrss_before.is_some()
+        && vmrss_after.is_some();
+    let vmhwm_before_mb = vmhwm_before.unwrap_or(0) as f64 / 1024.0;
+    let vmhwm_after_mb = vmhwm_after.unwrap_or(0) as f64 / 1024.0;
+    let vmrss_before_mb = vmrss_before.unwrap_or(0) as f64 / 1024.0;
+    let vmrss_after_mb = vmrss_after.unwrap_or(0) as f64 / 1024.0;
+    let algo_peak_delta_mb = if let (Some(before), Some(after)) = (vmhwm_before, vmhwm_after) {
+        after.saturating_sub(before) as f64 / 1024.0
+    } else {
+        0.0
+    };
 
     print!(
         "{{\"mode\":\"fit\",\
@@ -395,8 +423,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         print!("{:.9}", t);
     }
     println!(
-        "],\"fit_mean_sec\":{:.9},\"fit_std_sec\":{:.9}}}",
-        mean, std
+        "],\"fit_mean_sec\":{:.9},\"fit_std_sec\":{:.9},\
+\"algorithm_phase_memory_proxy_available\":{},\
+\"algorithm_phase_peak_rss_delta_mb\":{:.9},\
+\"algorithm_phase_vmrss_before_mb\":{:.9},\
+\"algorithm_phase_vmrss_after_mb\":{:.9},\
+\"algorithm_phase_vmhwm_before_mb\":{:.9},\
+\"algorithm_phase_vmhwm_after_mb\":{:.9}}}",
+        mean,
+        std,
+        algo_mem_proxy_available,
+        algo_peak_delta_mb,
+        vmrss_before_mb,
+        vmrss_after_mb,
+        vmhwm_before_mb,
+        vmhwm_after_mb
     );
 
     Ok(())
