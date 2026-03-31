@@ -1,0 +1,57 @@
+name: ecosystem-python-binding
+
+on:
+  pull_request:
+    paths:
+      - 'rust_umap/**'
+      - 'rust_umap_py/**'
+      - 'benchmarks/*ecosystem*'
+      - 'benchmarks/run_rust_umap_py*.py'
+      - '.github/workflows/ecosystem-python-binding.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'rust_umap/**'
+      - 'rust_umap_py/**'
+      - 'benchmarks/*ecosystem*'
+      - 'benchmarks/run_rust_umap_py*.py'
+      - '.github/workflows/ecosystem-python-binding.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  binding-smoke-and-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install maturin pytest -r benchmarks/requirements-bench.txt
+      - name: Build and install rust_umap_py
+        run: |
+          maturin develop --manifest-path rust_umap_py/Cargo.toml
+      - name: Run rust_umap_py tests
+        run: |
+          python -I -m pytest -q rust_umap_py/tests/test_binding.py
+      - name: Run ecosystem benchmark smoke
+        run: |
+          python benchmarks/compare_ecosystem_python_binding.py \
+            --python-bin python \
+            --warmup 0 \
+            --repeats 1 \
+            --sample-cap-consistency 1200
+      - name: Upload ecosystem benchmark artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-python-binding-report
+          path: |
+            benchmarks/report_ecosystem_python_binding.json
+            benchmarks/report_ecosystem_python_binding.md

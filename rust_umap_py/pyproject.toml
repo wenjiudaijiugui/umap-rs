@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.6,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "rust-umap-py"
+version = "0.1.0"
+description = "Python bindings for rust_umap"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+  "numpy>=1.26,<3",
+]
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: BSD License",
+]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "rust_umap_py._rust_umap_py"
+python-source = "python"
