@@ -86,9 +86,10 @@ Outputs:
 The repository CI is intentionally staged:
 
 1. Public-implementation consistency smoke check.
-2. No-regression smoke check against a baseline branch (metric matrix: euclidean/manhattan/cosine).
-3. Ecosystem Python binding smoke + machine-readable gate.
-4. Optional optimization-stage benchmark report in a deeper manual/scheduled workflow.
+2. ANN/e2e smoke check against public implementation baselines.
+3. No-regression smoke check against a baseline branch (metric matrix: euclidean/manhattan/cosine).
+4. Ecosystem Python binding smoke + machine-readable gate.
+5. Optional optimization-stage benchmark report in a deeper manual/scheduled workflow.
 
 Fast PR validation lives in `.github/workflows/ci.yml`.
 Deeper benchmark reporting lives in `.github/workflows/deep-benchmark-report.yml`.
@@ -136,7 +137,8 @@ fi
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 
 # candidate-root and baseline-root must point to different trees.
-git worktree add ../umap-rs-baseline HEAD~1
+BASE_REF="$(git rev-parse HEAD~1)"
+git worktree add ../umap-rs-baseline "$BASE_REF"
 $PYTHON_BIN benchmarks/ci_no_regression.py \
   --candidate-root "$PWD" \
   --baseline-root "$(cd ../umap-rs-baseline && pwd)"
