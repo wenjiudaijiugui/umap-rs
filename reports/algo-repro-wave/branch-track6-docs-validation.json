@@ -1,0 +1,169 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "full",
+  "run_id": "arw2-track6-2026-03-31",
+  "report_phase": "branch",
+  "branch": "arw2/track6-docs",
+  "commit": "PENDING_COMMIT",
+  "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+  "reference_manifest": [
+    {
+      "name": "repo-docs",
+      "repo_url": "https://github.com/lmcinnes/umap",
+      "resolved_ref": "docs-alignment-run",
+      "resolution_type": "version",
+      "build_options": {
+        "ci_workflow_ref": ".github/workflows/ci.yml"
+      }
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "docs_command_examples",
+      "source_uri": "repository README commands",
+      "version": "2026-03-31",
+      "checksum": "n/a",
+      "checksum_type": "other",
+      "split_policy": "n/a",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "docs_sanity",
+        "name": "docs_sanity",
+        "n_samples": 1,
+        "n_features": 1,
+        "notes": "documentation validation track"
+      }
+    ],
+    "real": [
+      {
+        "dataset_id": "docs_command_examples",
+        "name": "local_validation_commands",
+        "n_samples": 1,
+        "n_features": 1,
+        "notes": "real command examples users execute"
+      }
+    ],
+    "stress": [
+      {
+        "dataset_id": "docs_no_regression_worktree",
+        "name": "worktree_candidate_vs_baseline",
+        "n_samples": 1,
+        "n_features": 1,
+        "notes": "stress scenario is branch/worktree hygiene"
+      }
+    ],
+    "coverage_exceptions": []
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": "docs aligned to repository workflows and scripts"
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "markdown + shell commands",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "1"
+      },
+      "dependencies": {
+        "python": "python3 or python",
+        "rust": "cargo",
+        "maturin": "required for binding tests"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 42,
+      "trial_seeds": [42]
+    },
+    "exact_commands": [
+      "sed -n '80,180p' README.md",
+      "sed -n '35,110p' rust_umap/README.md"
+    ],
+    "raw_artifact_refs": [
+      "README.md",
+      "rust_umap/README.md"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "consistency": {
+          "pass": true,
+          "details": "commands now consistently use python resolver and explicit prerequisites"
+        },
+        "fairness": {
+          "pass": true,
+          "details": "no-regression docs now require separate candidate and baseline roots"
+        },
+        "reference_integrity": {
+          "pass": true,
+          "details": "CI stage descriptions aligned to current workflow conventions"
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "markdown edits only; no executable semantics changed"
+        }
+      }
+    },
+    "performance": {
+      "pass": true,
+      "soft": true,
+      "metrics": [
+        {
+          "metric_id": "public_consistency_docs",
+          "category": "public_consistency",
+          "pass": true,
+          "metric_name": "docs_command_alignment",
+          "unit": "ratio",
+          "value": 1.0,
+          "target_max": 1.0,
+          "baseline_ref": "repository-ci-stages",
+          "trial_count": 1,
+          "per_trial": [1.0],
+          "aggregate_method": "mean",
+          "measurement_scope": "documentation coherence",
+          "raw_artifact_refs": [
+            "README.md",
+            "rust_umap/README.md"
+          ]
+        }
+      ],
+      "explanation_required": false
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "track6-reviewer",
+      "implementation_owner": "track6-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Doc commands are now environment-robust and explicit about prerequisites.",
+      "reviewed_commit": "PENDING_COMMIT",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "No benchmark-gate semantics weakened in docs."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}

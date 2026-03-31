@@ -55,10 +55,11 @@ cargo run --release
 Repository automation keeps benchmark validation staged in this order:
 
 1. Compare consistency against public implementations.
-2. Check for no-regression on timing and memory (metric matrix: euclidean/manhattan/cosine).
-3. Run a deeper optimization-stage benchmark report when explicitly requested.
+2. Check ANN/e2e smoke behavior against public implementation baselines.
+3. Check for no-regression on timing and memory (metric matrix: euclidean/manhattan/cosine).
+4. Run a deeper optimization-stage benchmark report when explicitly requested.
 
-The Rust crate remains the unit under test in all three stages.
+The Rust crate remains the unit under test in all staged checks.
 
 For CSV-driven runs:
 
