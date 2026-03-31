@@ -4,7 +4,7 @@
   "run_id": "arw2-track5-ci-ann-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track5-ci-ann",
-  "commit": "529c19be884d7e5f170ecf8f01f584c98d3da833",
+  "commit": "51d98347247634e81df46c5b30509c9457a0d99d",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
@@ -133,7 +133,7 @@
         },
         "functional_tests": {
           "pass": true,
-          "details": "python syntax and workflow YAML parse sanity checks passed"
+          "details": "python syntax and workflow YAML parse sanity checks passed; ann-e2e-smoke run step enforces set -euo pipefail"
         }
       }
     },
@@ -174,8 +174,8 @@
       "implementation_owner": "worker-track5",
       "independence_verified": true,
       "decision": "go",
-      "review_summary": "Scope-limited CI smoke addition with bounded runtime and explicit fairness checks.",
-      "reviewed_commit": "529c19be884d7e5f170ecf8f01f584c98d3da833",
+      "review_summary": "Scope-limited CI smoke addition with bounded runtime, explicit fairness checks, and explicit pipefail semantics in workflow.",
+      "reviewed_commit": "51d98347247634e81df46c5b30509c9457a0d99d",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
