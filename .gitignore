@@ -1,9 +1,11 @@
 # Rust build artifacts
 rust_umap/target/
+rust_umap_py/target/
 
 # Python caches
 __pycache__/
 *.pyc
+rust_umap_py/python/rust_umap_py/_rust_umap_py*.so
 
 # Benchmark generated artifacts
 benchmarks/data/
@@ -16,6 +18,10 @@ benchmarks/time/
 benchmarks/time_real/
 benchmarks/time_real_fair/
 benchmarks/knn_real_fair/
+benchmarks/data_real_ecosystem/
+benchmarks/outputs_real_ecosystem/
+benchmarks/time_real_ecosystem/
+benchmarks/knn_real_ecosystem/
 
 # OS/editor
 .DS_Store

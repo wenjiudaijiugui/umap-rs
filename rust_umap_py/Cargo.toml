@@ -1,0 +1,13 @@
+[package]
+name = "rust_umap_py"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "rust_umap_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+rust_umap = { path = "../rust_umap" }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"

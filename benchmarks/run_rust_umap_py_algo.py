@@ -4,11 +4,26 @@ import json
 import time
 
 import numpy as np
-import umap
+
+try:
+    from rust_umap_py import Umap
+except Exception as exc:  # pragma: no cover - environment wiring
+    raise SystemExit(
+        "failed to import rust_umap_py; run `maturin develop --manifest-path rust_umap_py/Cargo.toml` first"
+    ) from exc
+
+
+def parse_bool(value: str) -> bool:
+    v = value.strip().lower()
+    if v in {"1", "true", "yes", "y"}:
+        return True
+    if v in {"0", "false", "no", "n"}:
+        return False
+    raise argparse.ArgumentTypeError(f"invalid bool value: {value}")
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Run Python umap-learn in algorithm-only timing mode")
+    p = argparse.ArgumentParser(description="Run rust_umap_py in algorithm-only timing mode")
     p.add_argument("--input", required=True, help="input CSV path")
     p.add_argument("--output", required=True, help="output embedding CSV path")
     p.add_argument("--n-neighbors", type=int, default=15)
@@ -16,10 +31,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-epochs", type=int, default=200)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--init", choices=["random", "spectral"], default="random")
+    p.add_argument("--metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--repeats", type=int, default=5)
     p.add_argument("--knn-indices", default="", help="optional precomputed kNN indices CSV")
     p.add_argument("--knn-dists", default="", help="optional precomputed kNN distances CSV")
+    p.add_argument("--knn-metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
+    p.add_argument("--use-approximate-knn", type=parse_bool, default=False)
+    p.add_argument("--approx-knn-candidates", type=int, default=30)
+    p.add_argument("--approx-knn-iters", type=int, default=10)
+    p.add_argument("--approx-knn-threshold", type=int, default=4096)
     return p.parse_args()
 
 
@@ -27,7 +48,7 @@ def load_precomputed_knn(args: argparse.Namespace):
     if not args.knn_indices and not args.knn_dists:
         return None
     if not args.knn_indices or not args.knn_dists:
-        raise ValueError("Both --knn-indices and --knn-dists must be provided")
+        raise ValueError("both --knn-indices and --knn-dists must be provided")
 
     knn_idx = np.loadtxt(args.knn_indices, delimiter=",", dtype=np.int64)
     knn_dist = np.loadtxt(args.knn_dists, delimiter=",", dtype=np.float32)
@@ -38,14 +59,16 @@ def load_precomputed_knn(args: argparse.Namespace):
     if knn_idx.shape != knn_dist.shape:
         raise ValueError("precomputed knn indices and distances must have identical shapes")
 
-    return knn_idx.astype(np.int32), knn_dist.astype(np.float32), None
+    return np.ascontiguousarray(knn_idx, dtype=np.int64), np.ascontiguousarray(
+        knn_dist, dtype=np.float32
+    )
 
 
-def create_model(args: argparse.Namespace, precomputed_knn):
-    return umap.UMAP(
+def create_model(args: argparse.Namespace) -> Umap:
+    return Umap(
         n_neighbors=args.n_neighbors,
         n_components=args.n_components,
-        metric="euclidean",
+        metric=args.metric,
         n_epochs=args.n_epochs,
         learning_rate=1.0,
         init=args.init,
@@ -55,13 +78,11 @@ def create_model(args: argparse.Namespace, precomputed_knn):
         local_connectivity=1.0,
         repulsion_strength=1.0,
         negative_sample_rate=5,
-        random_state=args.seed,
-        transform_seed=args.seed,
-        low_memory=True,
-        n_jobs=1,
-        force_approximation_algorithm=False,
-        precomputed_knn=precomputed_knn if precomputed_knn is not None else (None, None, None),
-        verbose=False,
+        random_seed=args.seed,
+        use_approximate_knn=args.use_approximate_knn,
+        approx_knn_candidates=args.approx_knn_candidates,
+        approx_knn_iters=args.approx_knn_iters,
+        approx_knn_threshold=args.approx_knn_threshold,
     )
 
 
@@ -73,14 +94,23 @@ def main() -> None:
     x = np.ascontiguousarray(x, dtype=np.float32)
 
     precomputed_knn = load_precomputed_knn(args)
+    embedding = None
 
     fit_times = []
     total = args.warmup + args.repeats
-    embedding = None
     for i in range(total):
-        model = create_model(args, precomputed_knn)
+        model = create_model(args)
         t0 = time.perf_counter()
-        embedding = model.fit_transform(x)
+        if precomputed_knn is None:
+            embedding = model.fit_transform(x)
+        else:
+            knn_idx, knn_dist = precomputed_knn
+            embedding = model.fit_transform_with_knn(
+                x,
+                knn_idx,
+                knn_dist,
+                knn_metric=args.knn_metric,
+            )
         dt = time.perf_counter() - t0
         if i >= args.warmup:
             fit_times.append(dt)
@@ -93,7 +123,8 @@ def main() -> None:
     fit_arr = np.asarray(fit_times, dtype=np.float64)
     result = {
         "mode": "fit",
-        "metric": "euclidean",
+        "metric": args.metric,
+        "knn_metric": args.knn_metric,
         "precomputed_knn": precomputed_knn is not None,
         "n_neighbors": args.n_neighbors,
         "n_components": args.n_components,
@@ -109,8 +140,9 @@ def main() -> None:
             "input_c_contiguous": bool(x.flags.c_contiguous),
             "output_dtype": str(embedding.dtype),
             "output_c_contiguous": bool(embedding.flags.c_contiguous),
-            "timing_boundary": "model.fit_transform(x)",
+            "timing_boundary": "model.fit_transform*(x, ...)",
             "post_timing_dtype_copy": False,
+            "embedding_buffer_reused": False,
         },
     }
     print(json.dumps(result))
