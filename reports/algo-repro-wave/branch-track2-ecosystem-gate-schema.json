@@ -4,7 +4,7 @@
   "run_id": "arw2-track2-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track2-ecosystem-schema",
-  "commit": "PENDING_COMMIT",
+  "commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
@@ -187,7 +187,7 @@
       "independence_verified": true,
       "decision": "go",
       "review_summary": "Normalization logic is minimal and backward-compatible; reliability semantics preserved.",
-      "reviewed_commit": "PENDING_COMMIT",
+      "reviewed_commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
