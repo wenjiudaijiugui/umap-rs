@@ -71,8 +71,42 @@ jobs:
           name: consistency-smoke
           path: consistency-smoke.json
 
+  ann-e2e-smoke:
+    needs: [changes, rust-build-test]
+    if: needs.changes.outputs.core_or_benchmark == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python benchmark deps
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
+      - name: ANN/e2e smoke gate (python_umap_learn vs rust_umap)
+        run: |
+          python benchmarks/ci_ann_smoke.py \
+            --python-bin python \
+            --rscript-bin "" \
+            --seed 42 \
+            --warmup 0 \
+            --repeats 1 \
+            --sample-cap 1200 \
+            --trust-gap 0.03 \
+            --recall-gap 0.08 \
+            --pairwise-min-overlap 0.35 | tee ann-e2e-smoke.json
+      - name: Upload ANN/e2e smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ann-e2e-smoke
+          path: ann-e2e-smoke.json
+
   no-regression-smoke:
-    needs: [changes, consistency-smoke]
+    needs: [changes, consistency-smoke, ann-e2e-smoke]
     if: needs.changes.outputs.core_or_benchmark == 'true'
     runs-on: ubuntu-latest
     strategy:
