@@ -7,6 +7,8 @@ from sklearn.neighbors import NearestNeighbors
 import sys
 from pathlib import Path
 
+import pytest
+
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path = [p for p in sys.path if Path(p or ".").resolve() != _REPO_ROOT]
 
@@ -112,3 +114,39 @@ def test_non_float32_and_non_contiguous_input_is_normalized() -> None:
     assert emb.dtype == np.float32
     assert emb.flags.c_contiguous
     assert emb.shape == (x_fortran.shape[0], 2)
+
+
+def test_zero_column_data_is_rejected_with_value_error() -> None:
+    x = np.empty((16, 0), dtype=np.float32)
+    model = Umap(
+        n_neighbors=5,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=3,
+        use_approximate_knn=False,
+    )
+
+    with pytest.raises(ValueError, match="data must have at least one column"):
+        model.fit(x)
+
+    with pytest.raises(ValueError, match="data must have at least one column"):
+        model.fit_transform(x)
+
+
+def test_zero_column_precomputed_knn_is_rejected_with_value_error() -> None:
+    x = make_dataset(n_samples=40, n_features=6, seed=9)
+    model = Umap(
+        n_neighbors=6,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=19,
+        use_approximate_knn=False,
+    )
+
+    knn_idx = np.empty((x.shape[0], 0), dtype=np.int64)
+    knn_dist = np.empty((x.shape[0], 0), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="knn columns must be >= n_neighbors"):
+        model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")

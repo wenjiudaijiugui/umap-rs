@@ -27,31 +27,53 @@ fn parse_init(init: &str) -> PyResult<InitMethod> {
 }
 
 fn map_umap_error(err: UmapError) -> PyErr {
-    PyRuntimeError::new_err(err.to_string())
+    match err {
+        UmapError::NotFitted => PyRuntimeError::new_err(err.to_string()),
+        UmapError::EmptyData
+        | UmapError::NeedAtLeastTwoSamples
+        | UmapError::InconsistentDimensions { .. }
+        | UmapError::FeatureMismatch { .. }
+        | UmapError::EmbeddingDimensionMismatch { .. }
+        | UmapError::InvalidParameter(_) => PyValueError::new_err(err.to_string()),
+    }
 }
 
-fn array2_f32_to_rows(data: &PyReadonlyArray2<'_, f32>) -> Vec<Vec<f32>> {
+fn ensure_nonzero_columns(name: &str, n_cols: usize) -> PyResult<()> {
+    if n_cols == 0 {
+        return Err(PyValueError::new_err(format!(
+            "{name} must have at least one column"
+        )));
+    }
+    Ok(())
+}
+
+fn array2_f32_to_rows(data: &PyReadonlyArray2<'_, f32>, name: &str) -> PyResult<Vec<Vec<f32>>> {
     let view = data.as_array();
     let (n_rows, n_cols) = view.dim();
+    ensure_nonzero_columns(name, n_cols)?;
 
     if let Ok(slice) = data.as_slice() {
         let mut rows = Vec::with_capacity(n_rows);
         for row in slice.chunks_exact(n_cols) {
             rows.push(row.to_vec());
         }
-        return rows;
+        return Ok(rows);
     }
 
     let mut rows = Vec::with_capacity(n_rows);
     for row in view.outer_iter() {
         rows.push(row.to_vec());
     }
-    rows
+    Ok(rows)
 }
 
-fn array2_i64_to_usize_rows(data: &PyReadonlyArray2<'_, i64>) -> PyResult<Vec<Vec<usize>>> {
+fn array2_i64_to_usize_rows(
+    data: &PyReadonlyArray2<'_, i64>,
+    name: &str,
+) -> PyResult<Vec<Vec<usize>>> {
     let view = data.as_array();
     let (n_rows, n_cols) = view.dim();
+    ensure_nonzero_columns(name, n_cols)?;
 
     if let Ok(slice) = data.as_slice() {
         let mut rows = Vec::with_capacity(n_rows);
@@ -84,10 +106,6 @@ fn array2_i64_to_usize_rows(data: &PyReadonlyArray2<'_, i64>) -> PyResult<Vec<Ve
         rows.push(out_row);
     }
     Ok(rows)
-}
-
-fn array2_f32_to_rows_raw(data: &PyReadonlyArray2<'_, f32>) -> Vec<Vec<f32>> {
-    array2_f32_to_rows(data)
 }
 
 fn rows_to_numpy<'py>(
@@ -225,7 +243,7 @@ impl PyUmapCore {
     }
 
     fn fit(&mut self, py: Python<'_>, data: PyReadonlyArray2<'_, f32>) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&data);
+        let rows = array2_f32_to_rows(&data, "data")?;
         py.allow_threads(|| self.inner.fit(&rows)).map_err(map_umap_error)
     }
 
@@ -234,7 +252,7 @@ impl PyUmapCore {
         py: Python<'py>,
         data: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&data);
+        let rows = array2_f32_to_rows(&data, "data")?;
         let embedding = py
             .allow_threads(|| self.inner.fit_transform(&rows))
             .map_err(map_umap_error)?;
@@ -247,7 +265,7 @@ impl PyUmapCore {
         data: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&data);
+        let rows = array2_f32_to_rows(&data, "data")?;
         let embedding = py
             .allow_threads(|| self.inner.fit_transform(&rows))
             .map_err(map_umap_error)?;
@@ -268,16 +286,22 @@ impl PyUmapCore {
                 "knn_indices and knn_dists must have identical shapes",
             ));
         }
+        if knn_indices.shape()[1] < self.inner.params().n_neighbors {
+            return Err(PyValueError::new_err(format!(
+                "knn columns must be >= n_neighbors ({})",
+                self.inner.params().n_neighbors
+            )));
+        }
 
-        let rows = array2_f32_to_rows(&data);
+        let rows = array2_f32_to_rows(&data, "data")?;
         if knn_indices.shape()[0] != rows.len() {
             return Err(PyValueError::new_err(
                 "knn row count must match data row count",
             ));
         }
 
-        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices)?;
-        let knn_dist_rows = array2_f32_to_rows_raw(&knn_dists);
+        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices, "knn_indices")?;
+        let knn_dist_rows = array2_f32_to_rows(&knn_dists, "knn_dists")?;
         let knn_metric = parse_metric(knn_metric)?;
 
         let embedding = py
@@ -309,16 +333,22 @@ impl PyUmapCore {
                 "knn_indices and knn_dists must have identical shapes",
             ));
         }
+        if knn_indices.shape()[1] < self.inner.params().n_neighbors {
+            return Err(PyValueError::new_err(format!(
+                "knn columns must be >= n_neighbors ({})",
+                self.inner.params().n_neighbors
+            )));
+        }
 
-        let rows = array2_f32_to_rows(&data);
+        let rows = array2_f32_to_rows(&data, "data")?;
         if knn_indices.shape()[0] != rows.len() {
             return Err(PyValueError::new_err(
                 "knn row count must match data row count",
             ));
         }
 
-        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices)?;
-        let knn_dist_rows = array2_f32_to_rows_raw(&knn_dists);
+        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices, "knn_indices")?;
+        let knn_dist_rows = array2_f32_to_rows(&knn_dists, "knn_dists")?;
         let knn_metric = parse_metric(knn_metric)?;
 
         let embedding = py
@@ -340,7 +370,7 @@ impl PyUmapCore {
         py: Python<'py>,
         query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&query);
+        let rows = array2_f32_to_rows(&query, "query")?;
         let out = py
             .allow_threads(|| self.inner.transform(&rows))
             .map_err(map_umap_error)?;
@@ -352,7 +382,7 @@ impl PyUmapCore {
         py: Python<'py>,
         embedded_query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&embedded_query);
+        let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
         let out = py
             .allow_threads(|| self.inner.inverse_transform(&rows))
             .map_err(map_umap_error)?;

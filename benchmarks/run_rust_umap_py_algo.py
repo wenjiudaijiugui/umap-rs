@@ -59,7 +59,9 @@ def load_precomputed_knn(args: argparse.Namespace):
     if knn_idx.shape != knn_dist.shape:
         raise ValueError("precomputed knn indices and distances must have identical shapes")
 
-    return knn_idx, knn_dist
+    return np.ascontiguousarray(knn_idx, dtype=np.int64), np.ascontiguousarray(
+        knn_dist, dtype=np.float32
+    )
 
 
 def create_model(args: argparse.Namespace) -> Umap:
@@ -89,9 +91,10 @@ def main() -> None:
     x = np.loadtxt(args.input, delimiter=",", dtype=np.float32)
     if x.ndim == 1:
         x = x.reshape(1, -1)
+    x = np.ascontiguousarray(x, dtype=np.float32)
 
     precomputed_knn = load_precomputed_knn(args)
-    embedding = np.empty((x.shape[0], args.n_components), dtype=np.float32)
+    embedding = None
 
     fit_times = []
     total = args.warmup + args.repeats
@@ -99,19 +102,21 @@ def main() -> None:
         model = create_model(args)
         t0 = time.perf_counter()
         if precomputed_knn is None:
-            model.fit_transform(x, out=embedding)
+            embedding = model.fit_transform(x)
         else:
             knn_idx, knn_dist = precomputed_knn
-            model.fit_transform_with_knn(
+            embedding = model.fit_transform_with_knn(
                 x,
                 knn_idx,
                 knn_dist,
                 knn_metric=args.knn_metric,
-                out=embedding,
             )
         dt = time.perf_counter() - t0
         if i >= args.warmup:
             fit_times.append(dt)
+
+    if embedding is None:
+        raise RuntimeError("embedding generation failed")
 
     np.savetxt(args.output, embedding, delimiter=",", fmt="%.8f")
 
@@ -133,7 +138,11 @@ def main() -> None:
         "interop": {
             "input_dtype": str(x.dtype),
             "input_c_contiguous": bool(x.flags.c_contiguous),
-            "embedding_buffer_reused": True,
+            "output_dtype": str(embedding.dtype),
+            "output_c_contiguous": bool(embedding.flags.c_contiguous),
+            "timing_boundary": "model.fit_transform*(x, ...)",
+            "post_timing_dtype_copy": False,
+            "embedding_buffer_reused": False,
         },
     }
     print(json.dumps(result))

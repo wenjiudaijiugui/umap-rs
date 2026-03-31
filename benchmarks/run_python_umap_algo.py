@@ -70,6 +70,7 @@ def main() -> None:
     x = np.loadtxt(args.input, delimiter=",", dtype=np.float32)
     if x.ndim == 1:
         x = x.reshape(1, -1)
+    x = np.ascontiguousarray(x, dtype=np.float32)
 
     precomputed_knn = load_precomputed_knn(args)
 
@@ -79,7 +80,7 @@ def main() -> None:
     for i in range(total):
         model = create_model(args, precomputed_knn)
         t0 = time.perf_counter()
-        embedding = model.fit_transform(x).astype(np.float32)
+        embedding = model.fit_transform(x)
         dt = time.perf_counter() - t0
         if i >= args.warmup:
             fit_times.append(dt)
@@ -91,9 +92,26 @@ def main() -> None:
 
     fit_arr = np.asarray(fit_times, dtype=np.float64)
     result = {
+        "mode": "fit",
+        "metric": "euclidean",
+        "precomputed_knn": precomputed_knn is not None,
+        "n_neighbors": args.n_neighbors,
+        "n_components": args.n_components,
+        "n_epochs": args.n_epochs,
+        "seed": args.seed,
+        "warmup": args.warmup,
+        "repeats": args.repeats,
         "fit_times_sec": fit_times,
         "fit_mean_sec": float(np.mean(fit_arr)) if fit_arr.size else 0.0,
         "fit_std_sec": float(np.std(fit_arr)) if fit_arr.size else 0.0,
+        "interop": {
+            "input_dtype": str(x.dtype),
+            "input_c_contiguous": bool(x.flags.c_contiguous),
+            "output_dtype": str(embedding.dtype),
+            "output_c_contiguous": bool(embedding.flags.c_contiguous),
+            "timing_boundary": "model.fit_transform(x)",
+            "post_timing_dtype_copy": False,
+        },
     }
     print(json.dumps(result))
 

@@ -48,6 +48,10 @@ jobs:
             --warmup 0 \
             --repeats 1 \
             --sample-cap-consistency 1200
+      - name: Run ecosystem machine-readable gate
+        run: |
+          python benchmarks/ci_ecosystem_python_binding_gate.py \
+            --report-json benchmarks/report_ecosystem_python_binding.json
       - name: Upload ecosystem benchmark artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -29,6 +29,9 @@ TIME_DIR = BENCH_DIR / "time_real_ecosystem"
 REPORT_JSON = BENCH_DIR / "report_ecosystem_python_binding.json"
 REPORT_MD = BENCH_DIR / "report_ecosystem_python_binding.md"
 
+GROUP_E2E_MIXED = "e2e_mixed_knn_strategy"
+GROUP_ALGO_EXACT = "algo_exact_shared_knn_exact"
+
 RUN_PY_E2E = BENCH_DIR / "run_python_umap.py"
 RUN_PY_ALGO = BENCH_DIR / "run_python_umap_algo.py"
 RUN_RUST_PY_E2E = BENCH_DIR / "run_rust_umap_py.py"
@@ -41,6 +44,7 @@ N_COMPONENTS = 2
 N_EPOCHS = 200
 INIT = "random"
 METRIC = "euclidean"
+E2E_RUST_APPROX_THRESHOLD = 4096
 
 THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
@@ -80,6 +84,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sample-cap-consistency", type=int, default=2000)
     p.add_argument("--include-california", action="store_true")
     p.add_argument("--large-max-samples", type=int, default=15000)
+    p.add_argument("--report-json", default=str(REPORT_JSON))
+    p.add_argument("--report-md", default=str(REPORT_MD))
     return p.parse_args()
 
 
@@ -323,7 +329,7 @@ def e2e_cmd(python_bin: Path, impl: str, data_path: Path, out_path: Path, seed: 
             "--approx-knn-iters",
             "10",
             "--approx-knn-threshold",
-            "4096",
+            str(E2E_RUST_APPROX_THRESHOLD),
         ]
     raise ValueError(f"unknown impl: {impl}")
 
@@ -466,9 +472,33 @@ def benchmark_e2e(
         sample_cap=sample_cap_consistency,
     )
 
+    rust_runtime_strategy = "approximate_ann" if spec.used_samples > E2E_RUST_APPROX_THRESHOLD else "exact"
+    strategy_equivalence = "strict_exact" if rust_runtime_strategy == "exact" else "not_equivalent"
+    strategy_note = (
+        "Both implementations used exact kNN for this dataset."
+        if strategy_equivalence == "strict_exact"
+        else (
+            "Python path stays exact (force_approximation_algorithm=False), "
+            "while rust_umap_py switched to ANN because n_samples exceeded approx_knn_threshold."
+        )
+    )
+
     return {
         "speed_and_memory": summary,
         "consistency": consistency,
+        "knn_strategy": {
+            "equivalence": strategy_equivalence,
+            "note": strategy_note,
+            "python_umap_learn": {
+                "strategy": "exact",
+                "force_approximation_algorithm": False,
+            },
+            "rust_umap_py": {
+                "strategy": rust_runtime_strategy,
+                "use_approximate_knn": True,
+                "approx_knn_threshold": E2E_RUST_APPROX_THRESHOLD,
+            },
+        },
     }
 
 
@@ -544,6 +574,7 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         f"- warmup={report['config']['warmup']}, repeats={report['config']['repeats']}, python_bin={python_bin}"
     )
     lines.append("- implementations: python_umap_learn, rust_umap_py")
+    lines.append("- groups: e2e_mixed_knn_strategy, algo_exact_shared_knn_exact")
     lines.append("- thread pinning: " + ", ".join([f"{k}={v}" for k, v in THREAD_ENV.items()]))
     lines.append("")
 
@@ -555,9 +586,16 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         )
     lines.append("")
 
-    lines.append("## Group A: e2e_default_ann")
+    lines.append("## Group A: e2e_mixed_knn_strategy")
     lines.append("")
-    for ds_name, ds in report["groups"]["e2e_default_ann"].items():
+    lines.append(
+        "- This group intentionally keeps each implementation's runtime defaults; strategy may differ across implementations/datasets."
+    )
+    lines.append(
+        "- python_umap_learn: exact kNN (`force_approximation_algorithm=False`); rust_umap_py: adaptive (`use_approximate_knn=True`, threshold=4096)."
+    )
+    lines.append("")
+    for ds_name, ds in report["groups"][GROUP_E2E_MIXED].items():
         lines.append(f"### Dataset: {ds_name}")
         lines.append("")
         lines.append("| Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |")
@@ -569,7 +607,12 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
             )
 
         c = ds["consistency"]
+        s = ds["knn_strategy"]
         lines.append("")
+        lines.append(f"- knn_strategy_equivalence: {s['equivalence']}")
+        lines.append(f"- knn_strategy_note: {s['note']}")
+        lines.append(f"- python_umap_learn strategy: {s['python_umap_learn']['strategy']}")
+        lines.append(f"- rust_umap_py strategy: {s['rust_umap_py']['strategy']}")
         lines.append(f"- sample_size_for_consistency: {c['sample_size_for_consistency']}")
         lines.append("- trustworthiness@15:")
         for impl in IMPLS:
@@ -583,9 +626,11 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         )
         lines.append("")
 
-    lines.append("## Group B: algo_exact_shared_knn")
+    lines.append("## Group B: algo_exact_shared_knn_exact")
     lines.append("")
-    for ds_name, ds in report["groups"]["algo_exact_shared_knn"].items():
+    lines.append("- This group enforces strict comparability: both implementations use the same precomputed exact shared kNN graph.")
+    lines.append("")
+    for ds_name, ds in report["groups"][GROUP_ALGO_EXACT].items():
         lines.append(f"### Dataset: {ds_name}")
         lines.append("")
         lines.append("| Implementation | Fit mean±std (s) | Process max RSS (MB) |")
@@ -622,6 +667,8 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
 def main() -> None:
     args = parse_args()
     python_bin = Path(args.python_bin)
+    report_json = Path(args.report_json)
+    report_md = Path(args.report_md)
     ensure_dirs()
 
     datasets = load_datasets(
@@ -645,15 +692,36 @@ def main() -> None:
             "thread_env": THREAD_ENV,
         },
         "groups": {
-            "e2e_default_ann": {},
-            "algo_exact_shared_knn": {},
+            GROUP_E2E_MIXED: {},
+            GROUP_ALGO_EXACT: {},
+        },
+        "group_definitions": {
+            GROUP_E2E_MIXED: {
+                "fairness": "not_strict_by_design",
+                "python_umap_learn_knn": "exact (force_approximation_algorithm=False)",
+                "rust_umap_py_knn": (
+                    "adaptive (use_approximate_knn=True, approx_knn_threshold="
+                    f"{E2E_RUST_APPROX_THRESHOLD})"
+                ),
+                "note": (
+                    "This group is for ecosystem-default behavior, not strict ANN/exact parity. "
+                    "Dataset-level runtime strategy is reported per implementation."
+                ),
+            },
+            GROUP_ALGO_EXACT: {
+                "fairness": "strict_exact_equivalent",
+                "python_umap_learn_knn": "shared precomputed exact kNN",
+                "rust_umap_py_knn": "shared precomputed exact kNN",
+                "note": "Primary fairness group for algorithm-level speed/memory/consistency conclusions.",
+            },
         },
         "interop_audit": [
             "Input dtype is normalized to float32 before crossing Python/Rust boundary.",
             "kNN indices use int64 and kNN distances use float32 in the binding path.",
             "Thread counts are pinned to 1 for BLAS/OpenMP/Numba to avoid cross-runtime thread bias.",
             "Random seed is aligned across implementations with seed=42 by default.",
-            "rust_umap_py algorithm benchmark uses reusable output buffer to reduce allocation overhead and peak RSS.",
+            "Algorithm timing scope in both bindings is aligned to the fit_transform* call only.",
+            "No post-fit dtype conversion/copy is included in algorithm timers on either side.",
             "Current rust_umap core stores row-major Vec<Vec<f32>>, so one boundary copy is still required.",
         ],
     }
@@ -685,7 +753,7 @@ def main() -> None:
             sample_cap_consistency=args.sample_cap_consistency,
             orig_knn_idx=orig_knn_idx,
         )
-        report["groups"]["e2e_default_ann"][spec.name] = e2e_result
+        report["groups"][GROUP_E2E_MIXED][spec.name] = e2e_result
 
         algo_result = benchmark_algo_exact(
             python_bin=python_bin,
@@ -699,12 +767,12 @@ def main() -> None:
             idx_path=idx_path,
             dist_path=dist_path,
         )
-        report["groups"]["algo_exact_shared_knn"][spec.name] = algo_result
+        report["groups"][GROUP_ALGO_EXACT][spec.name] = algo_result
 
-    REPORT_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    REPORT_MD.write_text(render_markdown(report, python_bin), encoding="utf-8")
+    report_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report_md.write_text(render_markdown(report, python_bin), encoding="utf-8")
 
-    print(json.dumps({"report_json": str(REPORT_JSON), "report_md": str(REPORT_MD)}, indent=2))
+    print(json.dumps({"report_json": str(report_json), "report_md": str(report_md)}, indent=2))
 
 
 if __name__ == "__main__":
