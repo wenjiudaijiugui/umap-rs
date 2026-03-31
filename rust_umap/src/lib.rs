@@ -327,6 +327,7 @@ impl UmapModel {
             self.params.n_neighbors as f32,
             self.params.local_connectivity,
             DEFAULT_BANDWIDTH,
+            knn_rows_include_self(&knn_indices_trimmed, &knn_dists_trimmed),
         );
 
         let directed =
@@ -423,6 +424,7 @@ impl UmapModel {
             self.params.n_neighbors as f32,
             self.params.local_connectivity,
             DEFAULT_BANDWIDTH,
+            knn_rows_include_self(&knn_indices_trimmed, &knn_dists_trimmed),
         );
 
         let directed =
@@ -527,6 +529,7 @@ impl UmapModel {
             n_neighbors as f32,
             adjusted_local_connectivity,
             DEFAULT_BANDWIDTH,
+            false,
         );
 
         let mut edges = compute_membership_strengths_bipartite(&indices, &dists, &sigmas, &rhos);
@@ -571,7 +574,7 @@ impl UmapModel {
         let train_embedding = self.embedding.as_ref().ok_or(UmapError::NotFitted)?;
         let fit_sigmas = self.fit_sigmas.as_ref().ok_or(UmapError::NotFitted)?;
         let fit_rhos = self.fit_rhos.as_ref().ok_or(UmapError::NotFitted)?;
-        let expected_features = self.n_features.ok_or(UmapError::NotFitted)?;
+        self.n_features.ok_or(UmapError::NotFitted)?;
 
         if embedded_query.is_empty() {
             return Ok(Vec::new());
@@ -594,7 +597,7 @@ impl UmapModel {
         }
 
         let n_train = train_data.len();
-        let n_neighbors = expected_features.min(n_train).max(1);
+        let n_neighbors = inverse_neighbor_count(self.params.n_neighbors, n_train);
         let n_epochs = match self.params.n_epochs {
             None => {
                 if embedded_query.len() <= 10_000 {
@@ -1482,11 +1485,35 @@ fn exact_nearest_neighbors_to_reference(
     }
 }
 
+#[inline]
+fn knn_rows_include_self(knn_indices: &[Vec<usize>], knn_dists: &[Vec<f32>]) -> bool {
+    if knn_indices.len() != knn_dists.len() {
+        return false;
+    }
+
+    knn_indices
+        .iter()
+        .zip(knn_dists.iter())
+        .enumerate()
+        .all(|(row_idx, (idx_row, dist_row))| {
+            !idx_row.is_empty()
+                && !dist_row.is_empty()
+                && idx_row[0] == row_idx
+                && dist_row[0].abs() <= SMOOTH_K_TOLERANCE
+        })
+}
+
+#[inline]
+fn inverse_neighbor_count(params_n_neighbors: usize, n_train: usize) -> usize {
+    params_n_neighbors.min(n_train).max(1)
+}
+
 fn smooth_knn_dist(
     distances: &[Vec<f32>],
     k: f32,
     local_connectivity: f32,
     bandwidth: f32,
+    distances_include_self: bool,
 ) -> (Vec<f32>, Vec<f32>) {
     let target = k.log2() * bandwidth;
     let n_samples = distances.len();
@@ -1495,7 +1522,8 @@ fn smooth_knn_dist(
         let mut total = 0.0_f32;
         let mut count = 0_usize;
         for row in distances {
-            for &d in row {
+            let start = usize::from(distances_include_self && !row.is_empty());
+            for &d in row.iter().skip(start) {
                 total += d;
                 count += 1;
             }
@@ -1508,8 +1536,14 @@ fn smooth_knn_dist(
 
     for i in 0..n_samples {
         let ith_distances = &distances[i];
+        let neighbor_start = usize::from(distances_include_self && !ith_distances.is_empty());
+        let active_distances = &ith_distances[neighbor_start..];
 
-        let non_zero_dists: Vec<f32> = ith_distances.iter().copied().filter(|d| *d > 0.0).collect();
+        let non_zero_dists: Vec<f32> = active_distances
+            .iter()
+            .copied()
+            .filter(|d| *d > 0.0)
+            .collect();
 
         if non_zero_dists.len() as f32 >= local_connectivity {
             let index = local_connectivity.floor() as usize;
@@ -1534,7 +1568,7 @@ fn smooth_knn_dist(
         for _ in 0..64 {
             let mut psum = 0.0_f32;
 
-            for &dist in ith_distances.iter().skip(1) {
+            for &dist in active_distances {
                 let d = dist - rhos[i];
                 if d > 0.0 {
                     psum += (-(d / mid)).exp();
@@ -1560,7 +1594,11 @@ fn smooth_knn_dist(
             }
         }
 
-        let mean_ith = ith_distances.iter().sum::<f32>() / ith_distances.len() as f32;
+        let mean_ith = if active_distances.is_empty() {
+            0.0
+        } else {
+            active_distances.iter().sum::<f32>() / active_distances.len() as f32
+        };
         let min_scale = if rhos[i] > 0.0 {
             MIN_K_DIST_SCALE * mean_ith
         } else {
@@ -3398,6 +3436,117 @@ mod tests {
     }
 
     #[test]
+    fn smooth_knn_dist_handles_rows_without_self_neighbor() {
+        let dists_with_self = vec![vec![0.0, 0.2, 0.4, 0.8], vec![0.0, 0.1, 0.5, 0.9]];
+        let dists_without_self = vec![vec![0.2, 0.4, 0.8], vec![0.1, 0.5, 0.9]];
+
+        let (sigmas_self, rhos_self) =
+            smooth_knn_dist(&dists_with_self, 3.0, 1.0, DEFAULT_BANDWIDTH, true);
+        let (sigmas_no_self, rhos_no_self) =
+            smooth_knn_dist(&dists_without_self, 3.0, 1.0, DEFAULT_BANDWIDTH, false);
+
+        for (&lhs, &rhs) in sigmas_self.iter().zip(sigmas_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-5,
+                "sigma mismatch for self/non-self rows: {lhs} vs {rhs}"
+            );
+        }
+        for (&lhs, &rhs) in rhos_self.iter().zip(rhos_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-6,
+                "rho mismatch for self/non-self rows: {lhs} vs {rhs}"
+            );
+        }
+    }
+
+    #[test]
+    fn smooth_knn_dist_with_zero_rows_matches_self_and_non_self_layouts() {
+        let dists_with_self = vec![vec![0.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 2.0, 3.0]];
+        let dists_without_self = vec![vec![0.0, 0.0, 0.0], vec![1.0, 2.0, 3.0]];
+
+        let (sigmas_self, rhos_self) =
+            smooth_knn_dist(&dists_with_self, 3.0, 1.0, DEFAULT_BANDWIDTH, true);
+        let (sigmas_no_self, rhos_no_self) =
+            smooth_knn_dist(&dists_without_self, 3.0, 1.0, DEFAULT_BANDWIDTH, false);
+
+        for (&lhs, &rhs) in sigmas_self.iter().zip(sigmas_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-6,
+                "sigma mismatch for self/non-self rows with zero row: {lhs} vs {rhs}"
+            );
+        }
+        for (&lhs, &rhs) in rhos_self.iter().zip(rhos_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-6,
+                "rho mismatch for self/non-self rows with zero row: {lhs} vs {rhs}"
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_neighbor_count_respects_model_n_neighbors() {
+        assert_eq!(inverse_neighbor_count(3, 100), 3);
+        assert_eq!(inverse_neighbor_count(15, 7), 7);
+        assert_eq!(inverse_neighbor_count(2, 2), 2);
+        assert_eq!(inverse_neighbor_count(4, 1), 1);
+    }
+
+    #[test]
+    fn precomputed_euclidean_knn_without_self_stays_finite() {
+        let data = synthetic_data(80, 8);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(60),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 123,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let (knn_idx_with_self, knn_dist_with_self) =
+            exact_nearest_neighbors(&data, params.n_neighbors + 1, Metric::Euclidean);
+
+        let mut knn_idx_no_self = Vec::with_capacity(data.len());
+        let mut knn_dist_no_self = Vec::with_capacity(data.len());
+        for (row_idx, (idx_row, dist_row)) in knn_idx_with_self
+            .iter()
+            .zip(knn_dist_with_self.iter())
+            .enumerate()
+        {
+            let mut idx_out = Vec::with_capacity(params.n_neighbors);
+            let mut dist_out = Vec::with_capacity(params.n_neighbors);
+            for (&idx, &dist) in idx_row.iter().zip(dist_row.iter()) {
+                if idx == row_idx && dist.abs() <= SMOOTH_K_TOLERANCE {
+                    continue;
+                }
+                idx_out.push(idx);
+                dist_out.push(dist);
+                if idx_out.len() == params.n_neighbors {
+                    break;
+                }
+            }
+            assert_eq!(
+                idx_out.len(),
+                params.n_neighbors,
+                "failed to build non-self knn row {row_idx}"
+            );
+            knn_idx_no_self.push(idx_out);
+            knn_dist_no_self.push(dist_out);
+        }
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_with_knn_metric(&data, &knn_idx_no_self, &knn_dist_no_self, Metric::Euclidean)
+            .expect("precomputed non-self knn fit should succeed");
+
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+    }
+
+    #[test]
     fn precomputed_knn_metric_mismatch_is_rejected() {
         let data = synthetic_data(64, 6);
         let params = UmapParams {
@@ -3431,7 +3580,7 @@ mod tests {
         let (knn_indices, knn_dists) =
             exact_nearest_neighbors(&data, n_neighbors, Metric::Euclidean);
         let (sigmas, rhos) =
-            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH);
+            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH, true);
         let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
         let edges = symmetrize_fuzzy_graph(&directed, 1.0);
 
@@ -3458,7 +3607,7 @@ mod tests {
         let n_neighbors = 10;
         let (knn_indices, knn_dists) = sparse::exact_nearest_neighbors_euclidean(&csr, n_neighbors);
         let (sigmas, rhos) =
-            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH);
+            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH, true);
         let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
         let edges = symmetrize_fuzzy_graph(&directed, 1.0);
 

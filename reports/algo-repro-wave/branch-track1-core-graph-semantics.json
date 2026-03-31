@@ -1,0 +1,193 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "full",
+  "run_id": "arw2-track1-core-2026-03-31T12:51:12Z",
+  "report_phase": "branch",
+  "branch": "arw2/track1-core",
+  "commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
+  "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+  "reference_manifest": [
+    {
+      "name": "umap-learn",
+      "repo_url": "https://github.com/lmcinnes/umap",
+      "resolved_ref": "0.5.9.post2",
+      "resolution_type": "version",
+      "build_options": {
+        "python": "3.12.3",
+        "notes": "Track 1 branch validates semantic correctness via rust unit tests"
+      }
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "synthetic_unit_tests",
+      "source_uri": "generated://rust_umap/lib_rs_tests",
+      "version": "2026-03-31",
+      "checksum": "unit-test-fixture-not-applicable",
+      "checksum_type": "other",
+      "split_policy": "deterministic synthetic fixtures with fixed seeds",
+      "acquired_at_utc": "2026-03-31T12:51:12Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "synthetic_unit_tests",
+        "name": "synthetic_data helper fixtures",
+        "n_samples": 80,
+        "n_features": 8,
+        "notes": "Covers precomputed kNN without self and smooth_kNN parity checks"
+      }
+    ],
+    "real": [],
+    "stress": [],
+    "coverage_exceptions": [
+      {
+        "missing_category": "real",
+        "reason": "Track 1 scope is core graph semantic regression fixes in rust_umap/src/lib.rs",
+        "compensating_validation": "Run full crate test suite and targeted regression tests for no-self kNN + inverse neighbor policy"
+      },
+      {
+        "missing_category": "stress",
+        "reason": "No benchmark track in this branch; stress profiling belongs to benchmark tracks",
+        "compensating_validation": "Deterministic unit tests executed across all modules via cargo test"
+      }
+    ]
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": "Branch validates semantics and policy regressions; no cross-implementation performance benchmark rerun in this scoped fix"
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "rust-1.94.0 + cargo + python-3.12.3",
+      "compiler": "rustc 1.94.0 (4a4ef493e 2026-03-02)",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "default",
+        "OPENBLAS_NUM_THREADS": "default",
+        "MKL_NUM_THREADS": "default",
+        "RAYON_NUM_THREADS": "default"
+      },
+      "dependencies": {
+        "rust_umap": "workspace",
+        "cargo": "1.94.0"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 2026,
+      "trial_seeds": [
+        2026
+      ]
+    },
+    "exact_commands": [
+      "cargo test --manifest-path rust_umap/Cargo.toml"
+    ],
+    "raw_artifact_refs": [
+      "rust_umap/src/lib.rs",
+      "rust_umap/target/debug/deps/rust_umap-*"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "consistency": {
+          "pass": true,
+          "details": "smooth_knn_dist parity tests confirm self/non-self kNN rows are handled consistently"
+        },
+        "fairness": {
+          "pass": true,
+          "details": "Executed in isolated branch/worktree with deterministic test seeds and fixed command boundaries"
+        },
+        "reference_integrity": {
+          "pass": true,
+          "details": "Reference manifest frozen to umap-learn 0.5.9.post2 and branch scope limited to core semantics"
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "cargo test passed: 27 unit tests in rust_umap/src/lib.rs plus bin/doc test targets"
+        }
+      }
+    },
+    "performance": {
+      "pass": true,
+      "soft": true,
+      "metrics": [
+        {
+          "pass": true,
+          "metric_id": "public_consistency_nonself_knn_semantics",
+          "metric_name": "sigma_parity_self_vs_nonself_rows",
+          "category": "public_consistency",
+          "unit": "abs_delta",
+          "value": 0.0,
+          "target_max": 1e-05,
+          "baseline_ref": "smooth_knn_dist_regression_suite",
+          "trial_count": 2,
+          "per_trial": [
+            0.0,
+            0.0
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "unit regression parity checks in rust_umap/src/lib.rs",
+          "raw_artifact_refs": [
+            "tests::smooth_knn_dist_handles_rows_without_self_neighbor",
+            "tests::smooth_knn_dist_with_zero_rows_matches_self_and_non_self_layouts"
+          ]
+        }
+      ],
+      "explanation_required": false
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-track1-review",
+      "implementation_owner": "gpt-5.3-codex-track1-dev",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Focused review found no blocking issues in smooth_kNN semantics or inverse neighbor policy updates.",
+      "reviewed_commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Scope isolation, deterministic execution, and comparable command boundaries verified for this branch task."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track1-core",
+      "implementation_owner": "gpt-5.3-codex-track1-dev",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed the smooth_kNN self/non-self handling changes are scoped and validated by targeted unit tests.",
+      "reviewed_commit": "bf4e37111dd351696f0bcb77114ac600f3483fb2",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Deterministic seeds and benchmark boundaries are unchanged; only graph-kNN row semantics and tests were adjusted."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}
