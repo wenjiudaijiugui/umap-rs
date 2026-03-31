@@ -87,7 +87,9 @@
     },
     "seed_manifest": {
       "global_seed": 42,
-      "trial_seeds": [42]
+      "trial_seeds": [
+        42
+      ]
     },
     "exact_commands": [
       "python3 -m py_compile benchmarks/compare_real_impls_fair.py benchmarks/ci_no_regression.py benchmarks/compare_ecosystem_python_binding.py",
@@ -135,7 +137,9 @@
           "target_max": 1.0,
           "baseline_ref": "benchmark-contract",
           "trial_count": 1,
-          "per_trial": [1.0],
+          "per_trial": [
+            1.0
+          ],
           "aggregate_method": "mean",
           "measurement_scope": "script-level behavior",
           "raw_artifact_refs": [
@@ -165,6 +169,27 @@
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
         "notes": "No changes to thread pinning or metric scope."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track4-portability",
+      "implementation_owner": "track4-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed portability hardening is scoped to runtime tool/env resolution without fairness-control drift.",
+      "reviewed_commit": "b39ea8e4c3151c6a635d729207dc2062682c0b44",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Thread pinning policy remains unchanged; portability edits only alter interpreter/tool discovery and GNU time probing."
       },
       "findings": [],
       "style_policy_check": {
