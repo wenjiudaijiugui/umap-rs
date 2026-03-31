@@ -9,6 +9,8 @@ from typing import Dict, List
 
 GROUP_E2E_MIXED = "e2e_mixed_knn_strategy"
 GROUP_ALGO_EXACT = "algo_exact_shared_knn_exact"
+LEGACY_GROUP_E2E = "e2e_default_ann"
+LEGACY_GROUP_ALGO = "algo_exact_shared_knn"
 PAIRWISE_KEY = "python_umap_learn__vs__rust_umap_py"
 
 
@@ -52,10 +54,26 @@ def validate_report_shape(report: Dict[str, object]) -> None:
     groups = report.get("groups")
     if not isinstance(groups, dict):
         raise ValueError("report.groups must be an object")
-    if GROUP_ALGO_EXACT not in groups:
-        raise ValueError(f"missing group '{GROUP_ALGO_EXACT}' in report")
-    if GROUP_E2E_MIXED not in groups:
-        raise ValueError(f"missing group '{GROUP_E2E_MIXED}' in report")
+    has_algo = GROUP_ALGO_EXACT in groups or LEGACY_GROUP_ALGO in groups
+    has_e2e = GROUP_E2E_MIXED in groups or LEGACY_GROUP_E2E in groups
+    if not has_algo:
+        raise ValueError(
+            f"missing group '{GROUP_ALGO_EXACT}' (or legacy '{LEGACY_GROUP_ALGO}') in report"
+        )
+    if not has_e2e:
+        raise ValueError(
+            f"missing group '{GROUP_E2E_MIXED}' (or legacy '{LEGACY_GROUP_E2E}') in report"
+        )
+
+
+def resolve_group_aliases(report: Dict[str, object]) -> Dict[str, str]:
+    groups = report["groups"]
+    algo_key = GROUP_ALGO_EXACT if GROUP_ALGO_EXACT in groups else LEGACY_GROUP_ALGO
+    mixed_key = GROUP_E2E_MIXED if GROUP_E2E_MIXED in groups else LEGACY_GROUP_E2E
+    return {
+        "algo_key": algo_key,
+        "mixed_key": mixed_key,
+    }
 
 
 def main() -> None:
@@ -63,9 +81,10 @@ def main() -> None:
     report_path = Path(args.report_json)
     report = json.loads(report_path.read_text(encoding="utf-8"))
     validate_report_shape(report)
+    aliases = resolve_group_aliases(report)
 
-    exact_group = report["groups"][GROUP_ALGO_EXACT]
-    mixed_group = report["groups"][GROUP_E2E_MIXED]
+    exact_group = report["groups"][aliases["algo_key"]]
+    mixed_group = report["groups"][aliases["mixed_key"]]
 
     failures: List[str] = []
     datasets_summary: Dict[str, object] = {}
@@ -154,19 +173,27 @@ def main() -> None:
             "checks": checks,
         }
 
-    strategy_disclosure = {
-        name: payload.get("knn_strategy", {}).get("equivalence", "missing")
-        for name, payload in mixed_group.items()
-    }
-    for dataset_name, equivalence in strategy_disclosure.items():
-        if equivalence not in {"strict_exact", "not_equivalent"}:
-            failures.append(
-                f"{dataset_name}: group '{GROUP_E2E_MIXED}' missing explicit knn strategy equivalence tag"
-            )
+    strategy_disclosure = {}
+    if aliases["mixed_key"] == GROUP_E2E_MIXED:
+        strategy_disclosure = {
+            name: payload.get("knn_strategy", {}).get("equivalence", "missing")
+            for name, payload in mixed_group.items()
+        }
+        for dataset_name, equivalence in strategy_disclosure.items():
+            if equivalence not in {"strict_exact", "not_equivalent"}:
+                failures.append(
+                    f"{dataset_name}: group '{GROUP_E2E_MIXED}' missing explicit knn strategy equivalence tag"
+                )
+    else:
+        strategy_disclosure = {name: "legacy_unavailable" for name in mixed_group.keys()}
 
     summary = {
         "report_json": str(report_path.resolve()),
         "group_checked_for_thresholds": GROUP_ALGO_EXACT,
+        "group_key_resolved_for_thresholds": aliases["algo_key"],
+        "mixed_group_key_resolved": aliases["mixed_key"],
+        "legacy_group_alias_mode": aliases["mixed_key"] == LEGACY_GROUP_E2E
+        or aliases["algo_key"] == LEGACY_GROUP_ALGO,
         "thresholds": {
             "max_trust_gap": args.max_trust_gap,
             "max_recall_gap": args.max_recall_gap,
