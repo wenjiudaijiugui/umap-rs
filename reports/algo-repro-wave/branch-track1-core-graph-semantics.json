@@ -1,0 +1,192 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "full",
+  "run_id": "arw2-track1-2026-03-31",
+  "report_phase": "branch",
+  "branch": "arw2/track1-core",
+  "commit": "eb23b43537bc6de76df23f0d8563ac42c489ad32",
+  "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+  "reference_manifest": [
+    {
+      "name": "umap-learn",
+      "repo_url": "https://github.com/lmcinnes/umap",
+      "resolved_ref": "runtime-installed",
+      "resolution_type": "version",
+      "build_options": {
+        "python": "3.12",
+        "force_approximation_algorithm": "false"
+      }
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "synthetic_data_internal",
+      "source_uri": "generated://rust_umap/src/lib.rs::tests::synthetic_data",
+      "version": "repo-head",
+      "checksum": "generated-in-test",
+      "checksum_type": "other",
+      "split_policy": "deterministic seeded generator",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "digits",
+      "source_uri": "sklearn.datasets.load_digits",
+      "version": "scikit-learn bundled",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "full dataset standardized",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "california_housing",
+      "source_uri": "sklearn.datasets.fetch_california_housing",
+      "version": "scikit-learn fetched",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "sample-capped deterministic subset",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "synthetic_data_internal",
+        "name": "synthetic_data_internal",
+        "n_samples": 80,
+        "n_features": 8,
+        "notes": "unit-test sanity set"
+      }
+    ],
+    "real": [
+      {
+        "dataset_id": "digits",
+        "name": "digits",
+        "n_samples": 1797,
+        "n_features": 64,
+        "notes": "real-world consistency benchmark"
+      }
+    ],
+    "stress": [
+      {
+        "dataset_id": "california_housing",
+        "name": "california_housing",
+        "n_samples": 15000,
+        "n_features": 8,
+        "notes": "large-scale stress case from existing benchmark suite"
+      }
+    ],
+    "coverage_exceptions": []
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": "shared exact-kNN and public baseline scripts present in repository"
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "cargo test",
+      "compiler": "rustc (toolchain from local cargo)",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "PYTHONHASHSEED": "0"
+      },
+      "dependencies": {
+        "cargo_manifest": "rust_umap/Cargo.toml"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 42,
+      "trial_seeds": [42, 77, 123, 444]
+    },
+    "exact_commands": [
+      "cargo test --manifest-path rust_umap/Cargo.toml",
+      "cargo test --manifest-path rust_umap/Cargo.toml -q"
+    ],
+    "raw_artifact_refs": [
+      "rust_umap/src/lib.rs"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "consistency": {
+          "pass": true,
+          "details": "smooth_knn_dist now handles rows with/without self-neighbor and regression tests pass"
+        },
+        "fairness": {
+          "pass": true,
+          "details": "same benchmark controls retained; fix only changes self-neighbor interpretation"
+        },
+        "reference_integrity": {
+          "pass": true,
+          "details": "no reference source changed; only core implementation logic and tests updated"
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "26 rust_umap tests pass locally"
+        }
+      }
+    },
+    "performance": {
+      "pass": true,
+      "soft": true,
+      "metrics": [
+        {
+          "metric_id": "public_consistency_regression_guard",
+          "category": "public_consistency",
+          "pass": true,
+          "metric_name": "precomputed_knn_without_self_stability",
+          "unit": "boolean",
+          "value": 1.0,
+          "target_max": 1.0,
+          "baseline_ref": "internal-direct-fit",
+          "trial_count": 1,
+          "per_trial": [1.0],
+          "aggregate_method": "mean",
+          "measurement_scope": "unit tests in rust_umap/src/lib.rs",
+          "raw_artifact_refs": [
+            "rust_umap/src/lib.rs"
+          ]
+        }
+      ],
+      "explanation_required": false
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "reviewer-track1-independent",
+      "implementation_owner": "impl-track1-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "No blocking issue found after targeted regression tests and full cargo test run.",
+      "reviewed_commit": "eb23b43537bc6de76df23f0d8563ac42c489ad32",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "thread controls unchanged and test scope isolated"
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}
