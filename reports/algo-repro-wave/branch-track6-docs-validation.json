@@ -4,7 +4,7 @@
   "run_id": "arw2-track6-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track6-docs",
-  "commit": "PENDING_COMMIT",
+  "commit": "ee69d85ffa8d2c1f50dd55c09d651154c69437f3",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
@@ -151,7 +151,7 @@
       "independence_verified": true,
       "decision": "go",
       "review_summary": "Doc commands are now environment-robust and explicit about prerequisites.",
-      "reviewed_commit": "PENDING_COMMIT",
+      "reviewed_commit": "ee69d85ffa8d2c1f50dd55c09d651154c69437f3",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
