@@ -183,7 +183,7 @@ struct PreparedRelation {
 }
 
 #[derive(Debug, Clone)]
-struct SliceStats {
+struct EmbeddingSystemStats {
     centroid: Vec<f32>,
     rms_radius: f32,
 }
@@ -422,10 +422,9 @@ fn optimize_aligned_embeddings(
         .map(|slice| vec![0.0_f32; slice.len() * n_components])
         .collect::<Vec<Vec<f32>>>();
 
-    let target_stats = embeddings
-        .iter()
-        .map(|slice| slice_stats(slice))
-        .collect::<Vec<SliceStats>>();
+    let Some(target_stats) = embedding_system_stats(embeddings.as_slice()) else {
+        return;
+    };
 
     let recenter_interval = params.recenter_interval;
 
@@ -477,10 +476,12 @@ fn optimize_aligned_embeddings(
                     row[dim] += step_size * delta[offset + dim];
                 }
             }
+        }
 
-            if epoch % recenter_interval == 0 || epoch + 1 == n_epochs {
-                enforce_slice_stats(slice, &target_stats[slice_idx]);
-            }
+        // Apply one shared affine stabilization across all slices to avoid
+        // per-slice anchoring that would counteract cross-slice alignment.
+        if epoch % recenter_interval == 0 || epoch + 1 == n_epochs {
+            enforce_embedding_system_stats(embeddings.as_mut_slice(), &target_stats);
         }
     }
 }
@@ -495,49 +496,56 @@ fn alignment_epoch_count(params: &AlignedUmapParams, embeddings: &[Vec<Vec<f32>>
     }
 
     let total_points: usize = embeddings.iter().map(|slice| slice.len()).sum();
-    if total_points <= 10_000 {
-        120
-    } else {
-        60
-    }
+    if total_points <= 10_000 { 120 } else { 60 }
 }
 
-fn slice_stats(slice: &[Vec<f32>]) -> SliceStats {
-    let n_points = slice.len();
-    let n_components = slice[0].len();
+fn embedding_system_stats(embeddings: &[Vec<Vec<f32>>]) -> Option<EmbeddingSystemStats> {
+    let first_slice = embeddings.first()?;
+    let first_row = first_slice.first()?;
+    let n_components = first_row.len();
+    let total_points: usize = embeddings.iter().map(|slice| slice.len()).sum();
+    if total_points == 0 {
+        return None;
+    }
 
     let mut centroid = vec![0.0_f32; n_components];
-    for row in slice {
-        for dim in 0..n_components {
-            centroid[dim] += row[dim];
+    for slice in embeddings {
+        for row in slice {
+            for dim in 0..n_components {
+                centroid[dim] += row[dim];
+            }
         }
     }
     for value in centroid.iter_mut() {
-        *value /= n_points as f32;
+        *value /= total_points as f32;
     }
 
     let mut sum_sq = 0.0_f32;
-    for row in slice {
-        for dim in 0..n_components {
-            let delta = row[dim] - centroid[dim];
-            sum_sq += delta * delta;
+    for slice in embeddings {
+        for row in slice {
+            for dim in 0..n_components {
+                let delta = row[dim] - centroid[dim];
+                sum_sq += delta * delta;
+            }
         }
     }
 
-    let rms_radius = (sum_sq / n_points as f32).sqrt();
-    SliceStats {
+    let rms_radius = (sum_sq / total_points as f32).sqrt();
+    Some(EmbeddingSystemStats {
         centroid,
         rms_radius,
-    }
+    })
 }
 
-fn enforce_slice_stats(slice: &mut [Vec<f32>], target: &SliceStats) {
-    if slice.is_empty() {
+fn enforce_embedding_system_stats(embeddings: &mut [Vec<Vec<f32>>], target: &EmbeddingSystemStats) {
+    if embeddings.is_empty() {
         return;
     }
 
-    let current = slice_stats(slice);
-    let n_components = slice[0].len();
+    let Some(current) = embedding_system_stats(embeddings) else {
+        return;
+    };
+    let n_components = target.centroid.len();
 
     let scale = if current.rms_radius > 1e-8 && target.rms_radius > 0.0 {
         target.rms_radius / current.rms_radius
@@ -545,10 +553,12 @@ fn enforce_slice_stats(slice: &mut [Vec<f32>], target: &SliceStats) {
         1.0
     };
 
-    for row in slice.iter_mut() {
-        for dim in 0..n_components {
-            let centered = row[dim] - current.centroid[dim];
-            row[dim] = target.centroid[dim] + centered * scale;
+    for slice in embeddings.iter_mut() {
+        for row in slice.iter_mut() {
+            for dim in 0..n_components {
+                let centered = row[dim] - current.centroid[dim];
+                row[dim] = target.centroid[dim] + centered * scale;
+            }
         }
     }
 }
@@ -567,7 +577,7 @@ fn two_vectors_mut<T>(arr: &mut [Vec<T>], i: usize, j: usize) -> (&mut Vec<T>, &
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{InitMethod, Metric};
+    use crate::{InitMethod, Metric, UmapModel};
 
     fn make_temporal_slices(
         n_slices: usize,
@@ -637,6 +647,40 @@ mod tests {
                 }
             }
         }
+    }
+
+    fn centroid_and_radius(slice: &[Vec<f32>]) -> (Vec<f32>, f32) {
+        let n_points = slice.len();
+        let n_components = slice[0].len();
+        let mut centroid = vec![0.0_f32; n_components];
+
+        for row in slice {
+            for dim in 0..n_components {
+                centroid[dim] += row[dim];
+            }
+        }
+        for value in centroid.iter_mut() {
+            *value /= n_points as f32;
+        }
+
+        let mut sum_sq = 0.0_f32;
+        for row in slice {
+            for dim in 0..n_components {
+                let d = row[dim] - centroid[dim];
+                sum_sq += d * d;
+            }
+        }
+        let rms_radius = (sum_sq / n_points as f32).sqrt();
+        (centroid, rms_radius)
+    }
+
+    fn centroid_shift_l2(left: &[f32], right: &[f32]) -> f32 {
+        let mut sum_sq = 0.0_f32;
+        for dim in 0..left.len() {
+            let d = left[dim] - right[dim];
+            sum_sq += d * d;
+        }
+        sum_sq.sqrt()
     }
 
     #[test]
@@ -739,6 +783,72 @@ mod tests {
         assert!(
             gap_aligned < gap_unaligned,
             "expected alignment regularization to reduce temporal identity gap: aligned={gap_aligned}, unaligned={gap_unaligned}"
+        );
+        assert_all_finite(&emb_aligned);
+    }
+
+    #[test]
+    fn alignment_is_not_slice_stats_anchored_to_initial_state() {
+        let slices = make_temporal_slices(3, 64, 8);
+
+        let base_umap = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(70),
+            metric: Metric::Euclidean,
+            learning_rate: 1.0,
+            min_dist: 0.1,
+            spread: 1.0,
+            local_connectivity: 1.0,
+            set_op_mix_ratio: 1.0,
+            repulsion_strength: 1.0,
+            negative_sample_rate: 5,
+            random_seed: 42,
+            init: InitMethod::Random,
+            use_approximate_knn: false,
+            approx_knn_candidates: 30,
+            approx_knn_iters: 10,
+            approx_knn_threshold: 4096,
+        };
+
+        let mut initial_embeddings = Vec::with_capacity(slices.len());
+        for (slice_idx, slice) in slices.iter().enumerate() {
+            let mut params = base_umap.clone();
+            params.random_seed = derive_slice_seed(params.random_seed, slice_idx as u64 + 1);
+            let mut model = UmapModel::new(params);
+            initial_embeddings.push(
+                model
+                    .fit_transform(slice)
+                    .expect("baseline per-slice umap fit should succeed"),
+            );
+        }
+
+        let mut aligned = AlignedUmapModel::new(AlignedUmapParams {
+            umap: base_umap,
+            alignment_regularization: 0.12,
+            alignment_learning_rate: 0.2,
+            alignment_epochs: Some(60),
+            recenter_interval: 1,
+        });
+
+        let emb_aligned = aligned
+            .fit_transform_identity(&slices)
+            .expect("aligned fit should succeed");
+
+        let mut preserved_slices = 0usize;
+        for idx in 0..emb_aligned.len() {
+            let (centroid_before, radius_before) = centroid_and_radius(&initial_embeddings[idx]);
+            let (centroid_after, radius_after) = centroid_and_radius(&emb_aligned[idx]);
+            let centroid_shift = centroid_shift_l2(&centroid_before, &centroid_after);
+            let radius_delta = (radius_before - radius_after).abs();
+            if centroid_shift <= 1e-4 && radius_delta <= 1e-4 {
+                preserved_slices += 1;
+            }
+        }
+
+        assert!(
+            preserved_slices < emb_aligned.len(),
+            "unexpected per-slice stat anchoring: every slice kept initial centroid/radius"
         );
         assert_all_finite(&emb_aligned);
     }

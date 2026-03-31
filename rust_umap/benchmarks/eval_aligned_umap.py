@@ -47,7 +47,22 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-components", type=int, default=2)
     parser.add_argument("--n-epochs", type=int, default=200)
     parser.add_argument("--metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
+    parser.add_argument("--init", choices=["random", "spectral"], default="random")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--knn-strategy",
+        choices=["exact", "approximate", "auto"],
+        default="exact",
+        help="exact: force both sides exact; approximate: force both sides approximate; auto: implementation defaults with strict threshold guard",
+    )
+    parser.add_argument(
+        "--approx-knn-threshold",
+        type=int,
+        default=4096,
+        help="shared threshold used by Rust auto strategy; in auto mode must stay 4096 to match umap-learn behavior",
+    )
+    parser.add_argument("--approx-knn-candidates", type=int, default=30)
+    parser.add_argument("--approx-knn-iters", type=int, default=10)
 
     parser.add_argument("--alignment-regularization", type=float, default=0.08)
     parser.add_argument("--alignment-learning-rate", type=float, default=0.25)
@@ -57,6 +72,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--consistency-sample", type=int, default=256)
+    parser.add_argument("--gate-max-mean-procrustes-rmse", type=float, default=0.12)
+    parser.add_argument("--gate-min-mean-pairwise-distance-corr", type=float, default=0.70)
+    parser.add_argument("--gate-max-adjacent-gap-abs-diff", type=float, default=2.50)
+    parser.add_argument("--gate-max-speed-ratio", type=float, default=3.0)
+    parser.add_argument("--gate-max-memory-ratio", type=float, default=3.0)
+    parser.add_argument("--no-fail-on-gate", action="store_true")
     parser.add_argument("--output-json", default="")
 
     return parser.parse_args()
@@ -196,6 +217,191 @@ def split_stats(values: List[float]) -> Dict[str, object]:
     }
 
 
+def safe_ratio(numerator: float, denominator: float) -> float:
+    if not np.isfinite(numerator) or not np.isfinite(denominator) or denominator <= 0.0:
+        return float("nan")
+    return float(numerator / denominator)
+
+
+def resolve_knn_strategy(
+    strategy: str,
+    approx_knn_threshold: int,
+    max_samples_per_slice: int,
+) -> Dict[str, object]:
+    if strategy == "exact":
+        # umap-learn falls back to ANN for large inputs unless approximation is forced off
+        # and sample count stays below its exact-distance path threshold.
+        exact_path_guaranteed = max_samples_per_slice <= approx_knn_threshold
+        return {
+            "mode": "exact",
+            "rust_use_approximate_knn": False,
+            "rust_approx_knn_threshold": approx_knn_threshold,
+            "python_force_approximation_algorithm": False,
+            "python_exact_path_guaranteed": bool(exact_path_guaranteed),
+            "constraint_pass": bool(exact_path_guaranteed),
+            "constraint_reason": (
+                "exact mode requires max_samples_per_slice <= approx_knn_threshold "
+                "to prevent umap-learn from switching to approximate neighbors"
+            ),
+        }
+
+    if strategy == "approximate":
+        return {
+            "mode": "approximate",
+            "rust_use_approximate_knn": True,
+            "rust_approx_knn_threshold": 0,
+            "python_force_approximation_algorithm": True,
+            "python_exact_path_guaranteed": False,
+            "constraint_pass": True,
+            "constraint_reason": "both implementations are forced to ANN neighbor search",
+        }
+
+    # umap-learn's auto mode uses a fixed internal threshold (~4096). Keep Rust aligned.
+    auto_threshold_ok = approx_knn_threshold == 4096
+    return {
+        "mode": "auto",
+        "rust_use_approximate_knn": True,
+        "rust_approx_knn_threshold": approx_knn_threshold,
+        "python_force_approximation_algorithm": False,
+        "python_exact_path_guaranteed": max_samples_per_slice <= 4096,
+        "constraint_pass": bool(auto_threshold_ok),
+        "constraint_reason": (
+            "auto mode parity requires approx_knn_threshold == 4096 to mirror "
+            "umap-learn's internal exact/approx switch"
+        ),
+    }
+
+
+def paired_alternating_schedule(
+    impl_names: List[str],
+    rounds: int,
+    seed: int,
+) -> Dict[str, object]:
+    if len(impl_names) != 2:
+        raise ValueError("paired alternating schedule expects exactly two implementations")
+    rng = np.random.default_rng(seed ^ 0xA11CED)
+    first_idx = int(rng.integers(0, 2))
+    first = impl_names[first_idx]
+    second = impl_names[1 - first_idx]
+
+    orders: List[List[str]] = []
+    for round_idx in range(rounds):
+        if round_idx % 2 == 0:
+            orders.append([first, second])
+        else:
+            orders.append([second, first])
+
+    return {
+        "strategy": "paired_alternating_random_start",
+        "random_start_first_impl": first,
+        "round_orders": orders,
+    }
+
+
+def compare_leq(name: str, value: float, threshold: float) -> Dict[str, object]:
+    passed = bool(np.isfinite(value) and value <= threshold)
+    return {
+        "metric": name,
+        "value": float(value),
+        "operator": "<=",
+        "threshold": float(threshold),
+        "pass": passed,
+    }
+
+
+def compare_geq(name: str, value: float, threshold: float) -> Dict[str, object]:
+    passed = bool(np.isfinite(value) and value >= threshold)
+    return {
+        "metric": name,
+        "value": float(value),
+        "operator": ">=",
+        "threshold": float(threshold),
+        "pass": passed,
+    }
+
+
+def build_gate_results(
+    args: argparse.Namespace,
+    consistency: Dict[str, object],
+    speed_ratio: float,
+    memory_ratio: float,
+) -> Dict[str, object]:
+    consistency_checks = [
+        compare_leq(
+            "mean_procrustes_rmse",
+            float(consistency["mean_procrustes_rmse"]),
+            float(args.gate_max_mean_procrustes_rmse),
+        ),
+        compare_geq(
+            "mean_pairwise_distance_corr",
+            float(consistency["mean_pairwise_distance_corr"]),
+            float(args.gate_min_mean_pairwise_distance_corr),
+        ),
+        compare_leq(
+            "adjacent_gap_abs_diff",
+            float(consistency["adjacent_gap_abs_diff"]),
+            float(args.gate_max_adjacent_gap_abs_diff),
+        ),
+    ]
+    consistency_pass = all(check["pass"] for check in consistency_checks)
+
+    speed_checks = [
+        compare_leq(
+            "speed_ratio_rust_over_python",
+            speed_ratio,
+            float(args.gate_max_speed_ratio),
+        )
+    ]
+    speed_pass = all(check["pass"] for check in speed_checks)
+
+    memory_checks = [
+        compare_leq(
+            "memory_ratio_rust_over_python",
+            memory_ratio,
+            float(args.gate_max_memory_ratio),
+        )
+    ]
+    memory_pass = all(check["pass"] for check in memory_checks)
+
+    failing_sections: List[str] = []
+    if not consistency_pass:
+        failing_sections.append("consistency")
+    if not speed_pass:
+        failing_sections.append("speed")
+    if not memory_pass:
+        failing_sections.append("memory")
+
+    return {
+        "consistency": {
+            "pass": consistency_pass,
+            "checks": consistency_checks,
+            "threshold_reason": (
+                "Use strict shape agreement (Procrustes RMSE), moderate pairwise-structure agreement "
+                "(distance correlation), and a coarse adjacent-gap alarm. The gap threshold is looser "
+                "because it is sensitive to implementation-specific global scale."
+            ),
+        },
+        "speed": {
+            "pass": speed_pass,
+            "checks": speed_checks,
+            "threshold_reason": (
+                "Prevent severe runtime regressions while allowing moderate implementation variance."
+            ),
+        },
+        "memory": {
+            "pass": memory_pass,
+            "checks": memory_checks,
+            "threshold_reason": (
+                "Prevent severe peak RSS regressions while tolerating allocator/runtime differences."
+            ),
+        },
+        "overall": {
+            "pass": not failing_sections,
+            "failing_sections": failing_sections,
+        },
+    }
+
+
 def procrustes_rmse(x: np.ndarray, y: np.ndarray) -> float:
     x0 = x - x.mean(axis=0, keepdims=True)
     y0 = y - y.mean(axis=0, keepdims=True)
@@ -291,6 +497,23 @@ def worker_python(args: argparse.Namespace) -> int:
     slices = [load_csv(Path(path)) for path in args.slice_csv]
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    max_samples_per_slice = max(int(sl.shape[0]) for sl in slices)
+
+    knn_cfg = resolve_knn_strategy(
+        strategy=args.knn_strategy,
+        approx_knn_threshold=args.approx_knn_threshold,
+        max_samples_per_slice=max_samples_per_slice,
+    )
+    if not bool(knn_cfg["constraint_pass"]):
+        print(
+            json.dumps(
+                {
+                    "error": "knn strategy constraint failed",
+                    "knn_strategy": knn_cfg,
+                }
+            )
+        )
+        return 1
 
     relations = [{i: i for i in range(slices[idx].shape[0])} for idx in range(len(slices) - 1)]
 
@@ -298,6 +521,7 @@ def worker_python(args: argparse.Namespace) -> int:
         n_neighbors=args.n_neighbors,
         n_components=args.n_components,
         metric=args.metric,
+        init=args.init,
         n_epochs=args.n_epochs,
         learning_rate=1.0,
         min_dist=0.1,
@@ -310,7 +534,8 @@ def worker_python(args: argparse.Namespace) -> int:
         alignment_window_size=2,
         random_state=args.seed,
         transform_seed=args.seed,
-        low_memory=True,
+        force_approximation_algorithm=bool(knn_cfg["python_force_approximation_algorithm"]),
+        low_memory=False,
         verbose=False,
     )
 
@@ -334,6 +559,9 @@ def worker_python(args: argparse.Namespace) -> int:
         "n_neighbors": args.n_neighbors,
         "n_components": args.n_components,
         "n_epochs": args.n_epochs,
+        "init": args.init,
+        "knn_strategy": knn_cfg["mode"],
+        "python_force_approximation_algorithm": knn_cfg["python_force_approximation_algorithm"],
         "seed": args.seed,
         "alignment_regularization": args.alignment_regularization,
         "slice_shapes": shape_entries,
@@ -365,6 +593,19 @@ def compare_mode(args: argparse.Namespace) -> int:
             path = data_dir / f"slice_{idx}.csv"
             save_csv(path, sl)
             slice_paths.append(path)
+
+        max_samples_per_slice = max(int(sl.shape[0]) for sl in slices)
+        knn_cfg = resolve_knn_strategy(
+            strategy=args.knn_strategy,
+            approx_knn_threshold=args.approx_knn_threshold,
+            max_samples_per_slice=max_samples_per_slice,
+        )
+        if not bool(knn_cfg["constraint_pass"]):
+            raise RuntimeError(
+                f"knn strategy constraint failed: {knn_cfg['constraint_reason']} "
+                f"(mode={knn_cfg['mode']}, max_samples_per_slice={max_samples_per_slice}, "
+                f"approx_knn_threshold={args.approx_knn_threshold})"
+            )
 
         rust_out = tmp / "rust_out"
         py_out = tmp / "py_out"
@@ -400,6 +641,12 @@ def compare_mode(args: argparse.Namespace) -> int:
             str(args.n_epochs),
             "--metric",
             args.metric,
+            "--init",
+            args.init,
+            "--knn-strategy",
+            args.knn_strategy,
+            "--approx-knn-threshold",
+            str(args.approx_knn_threshold),
             "--seed",
             str(args.seed),
             "--alignment-regularization",
@@ -437,9 +684,15 @@ def compare_mode(args: argparse.Namespace) -> int:
             "--seed",
             str(args.seed),
             "--init",
-            "random",
+            args.init,
             "--use-approximate-knn",
-            "false",
+            str(bool(knn_cfg["rust_use_approximate_knn"])).lower(),
+            "--approx-knn-candidates",
+            str(args.approx_knn_candidates),
+            "--approx-knn-iters",
+            str(args.approx_knn_iters),
+            "--approx-knn-threshold",
+            str(knn_cfg["rust_approx_knn_threshold"]),
             "--alignment-regularization",
             str(args.alignment_regularization),
             "--alignment-learning-rate",
@@ -450,34 +703,55 @@ def compare_mode(args: argparse.Namespace) -> int:
             str(args.recenter_interval),
         ]
 
-        def run_impl(cmd: List[str], impl_name: str) -> Dict[str, object]:
-            timing: List[float] = []
-            rss_list: List[float] = []
-            last_payload: Dict[str, object] = {}
+        impl_cmds: Dict[str, List[str]] = {
+            "python_aligned_umap": python_cmd,
+            "rust_aligned_umap": rust_cmd,
+        }
 
-            total_runs = args.warmup + args.repeats
-            for run_idx in range(total_runs):
-                proc, rss = run_timed_command(cmd, env)
+        schedule_meta = paired_alternating_schedule(
+            impl_names=list(impl_cmds.keys()),
+            rounds=args.warmup + args.repeats,
+            seed=args.seed,
+        )
+        schedule = schedule_meta["round_orders"]
+
+        raw_stats: Dict[str, Dict[str, object]] = {
+            impl_name: {"timing": [], "rss": [], "last_payload": {}}
+            for impl_name in impl_cmds.keys()
+        }
+
+        for round_idx, order in enumerate(schedule):
+            measured = round_idx >= args.warmup
+            for impl_name in order:
+                proc, rss = run_timed_command(impl_cmds[impl_name], env)
                 if proc.returncode != 0:
                     raise RuntimeError(
-                        f"{impl_name} run failed (run {run_idx + 1}/{total_runs}):\n"
+                        f"{impl_name} run failed (round {round_idx + 1}/{len(schedule)}):\n"
                         f"stdout:\n{proc.stdout}\n\nstderr:\n{proc.stderr}"
                     )
 
                 payload = parse_json_payload(proc.stdout)
-                if run_idx >= args.warmup:
-                    timing.append(float(payload["fit_time_sec"]))
-                    rss_list.append(float(rss))
-                    last_payload = payload
+                if "error" in payload:
+                    raise RuntimeError(
+                        f"{impl_name} returned error payload (round {round_idx + 1}/{len(schedule)}): "
+                        f"{payload['error']}"
+                    )
 
-            return {
-                "fit_time_sec": split_stats(timing),
-                "max_rss_mb": split_stats(rss_list),
-                "last_payload": last_payload,
-            }
+                if measured:
+                    raw_stats[impl_name]["timing"].append(float(payload["fit_time_sec"]))
+                    raw_stats[impl_name]["rss"].append(float(rss))
+                    raw_stats[impl_name]["last_payload"] = payload
 
-        py_stats = run_impl(python_cmd, "python_aligned_umap")
-        rust_stats = run_impl(rust_cmd, "rust_aligned_umap")
+        py_stats = {
+            "fit_time_sec": split_stats(raw_stats["python_aligned_umap"]["timing"]),
+            "max_rss_mb": split_stats(raw_stats["python_aligned_umap"]["rss"]),
+            "last_payload": raw_stats["python_aligned_umap"]["last_payload"],
+        }
+        rust_stats = {
+            "fit_time_sec": split_stats(raw_stats["rust_aligned_umap"]["timing"]),
+            "max_rss_mb": split_stats(raw_stats["rust_aligned_umap"]["rss"]),
+            "last_payload": raw_stats["rust_aligned_umap"]["last_payload"],
+        }
 
         py_embeddings = [load_csv(py_out / f"slice_{idx}_embedding.csv") for idx in range(args.slices)]
         rust_embeddings = [load_csv(rust_out / f"slice_{idx}_embedding.csv") for idx in range(args.slices)]
@@ -489,8 +763,20 @@ def compare_mode(args: argparse.Namespace) -> int:
             seed=args.seed,
         )
 
-        speed_ratio = float(rust_stats["fit_time_sec"]["mean"] / py_stats["fit_time_sec"]["mean"])
-        memory_ratio = float(rust_stats["max_rss_mb"]["mean"] / py_stats["max_rss_mb"]["mean"])
+        speed_ratio = safe_ratio(
+            float(rust_stats["fit_time_sec"]["mean"]),
+            float(py_stats["fit_time_sec"]["mean"]),
+        )
+        memory_ratio = safe_ratio(
+            float(rust_stats["max_rss_mb"]["mean"]),
+            float(py_stats["max_rss_mb"]["mean"]),
+        )
+        gates = build_gate_results(
+            args=args,
+            consistency=consistency,
+            speed_ratio=speed_ratio,
+            memory_ratio=memory_ratio,
+        )
 
         report: Dict[str, object] = {
             "config": {
@@ -500,6 +786,11 @@ def compare_mode(args: argparse.Namespace) -> int:
                 "drift": args.drift,
                 "noise": args.noise,
                 "metric": args.metric,
+                "init": args.init,
+                "knn_strategy": args.knn_strategy,
+                "approx_knn_threshold": args.approx_knn_threshold,
+                "approx_knn_candidates": args.approx_knn_candidates,
+                "approx_knn_iters": args.approx_knn_iters,
                 "n_neighbors": args.n_neighbors,
                 "n_components": args.n_components,
                 "n_epochs": args.n_epochs,
@@ -511,25 +802,38 @@ def compare_mode(args: argparse.Namespace) -> int:
                 "warmup": args.warmup,
                 "repeats": args.repeats,
                 "consistency_sample": args.consistency_sample,
+                "gate_max_mean_procrustes_rmse": args.gate_max_mean_procrustes_rmse,
+                "gate_min_mean_pairwise_distance_corr": args.gate_min_mean_pairwise_distance_corr,
+                "gate_max_adjacent_gap_abs_diff": args.gate_max_adjacent_gap_abs_diff,
+                "gate_max_speed_ratio": args.gate_max_speed_ratio,
+                "gate_max_memory_ratio": args.gate_max_memory_ratio,
             },
             "bias_controls": {
                 "shared_synthetic_data": True,
                 "global_feature_standardization": True,
                 "same_seed": args.seed,
                 "metric_alignment": args.metric,
+                "init_alignment": args.init,
                 "single_thread_env": THREAD_ENV,
                 "identity_relations": True,
                 "same_neighbors_components_epochs": True,
+                "knn_strategy_alignment": knn_cfg,
+                "run_order_debias": schedule_meta,
+                "python_low_memory_disabled_for_parity": True,
+                "python_n_jobs_flag_available_in_aligned_umap": False,
+                "rust_specific_knn_params_reported": True,
             },
             "python_aligned_umap": py_stats,
             "rust_aligned_umap": rust_stats,
             "consistency": consistency,
+            "gates": gates,
             "summary": {
                 "speed_ratio_rust_over_python": speed_ratio,
                 "memory_ratio_rust_over_python": memory_ratio,
                 "mean_procrustes_rmse": consistency["mean_procrustes_rmse"],
                 "mean_pairwise_distance_corr": consistency["mean_pairwise_distance_corr"],
                 "adjacent_gap_abs_diff": consistency["adjacent_gap_abs_diff"],
+                "hard_gate_pass": bool(gates["overall"]["pass"]),
             },
         }
 
@@ -539,6 +843,10 @@ def compare_mode(args: argparse.Namespace) -> int:
         if args.output_json:
             Path(args.output_json).write_text(text + "\n", encoding="utf-8")
 
+    if not bool(gates["overall"]["pass"]) and not args.no_fail_on_gate:
+        for section in gates["overall"]["failing_sections"]:
+            print(f"FAIL: aligned hard gate failed at section '{section}'", file=sys.stderr)
+        return 2
     return 0
 
 

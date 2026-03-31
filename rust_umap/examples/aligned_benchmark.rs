@@ -124,11 +124,7 @@ fn mean_adjacent_identity_gap(embeddings: &[Vec<Vec<f32>>]) -> f32 {
         }
     }
 
-    if count == 0 {
-        0.0
-    } else {
-        sum / count as f32
-    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
 }
 
 fn usage() {
@@ -261,7 +257,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let alignment_gap = mean_adjacent_identity_gap(&embeddings);
 
     print!(
-        "{{\"fit_time_sec\":{:.9},\"adjacent_identity_gap\":{:.9},\"n_slices\":{},\"metric\":\"{}\",\"init\":\"{}\",\"n_neighbors\":{},\"n_components\":{},\"n_epochs\":{},\"seed\":{},\"alignment_regularization\":{:.6},\"alignment_learning_rate\":{:.6},\"alignment_epochs\":{},\"recenter_interval\":{},\"slice_shapes\":[",
+        "{{\"fit_time_sec\":{:.9},\"adjacent_identity_gap\":{:.9},\"n_slices\":{},\"metric\":\"{}\",\"init\":\"{}\",\"n_neighbors\":{},\"n_components\":{},\"n_epochs\":{},\"seed\":{},\"use_approximate_knn\":{},\"approx_knn_candidates\":{},\"approx_knn_iters\":{},\"approx_knn_threshold\":{},\"alignment_regularization\":{:.6},\"alignment_learning_rate\":{:.6},\"alignment_epochs\":{},\"recenter_interval\":{},\"slice_shapes\":[",
         fit_time_sec,
         alignment_gap,
         embeddings.len(),
@@ -271,6 +267,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         cfg.n_components,
         cfg.n_epochs,
         cfg.seed,
+        cfg.use_approximate_knn,
+        cfg.approx_knn_candidates,
+        cfg.approx_knn_iters,
+        cfg.approx_knn_threshold,
         cfg.alignment_regularization,
         cfg.alignment_learning_rate,
         cfg.alignment_epochs,
