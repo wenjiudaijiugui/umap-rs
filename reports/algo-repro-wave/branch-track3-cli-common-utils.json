@@ -4,7 +4,7 @@
   "run_id": "arw2-track3-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track3-cli-common",
-  "commit": "pending-track3",
+  "commit": "aa0d2e974df2fee8091f0c2347677a54c3dd5652",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
@@ -166,7 +166,7 @@
       "independence_verified": true,
       "decision": "go",
       "review_summary": "Shared helper refactor is scoped and validated by tests/build.",
-      "reviewed_commit": "pending-track3",
+      "reviewed_commit": "aa0d2e974df2fee8091f0c2347677a54c3dd5652",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
