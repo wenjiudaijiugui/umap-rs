@@ -104,7 +104,9 @@
     },
     "seed_manifest": {
       "global_seed": 42,
-      "trial_seeds": [42]
+      "trial_seeds": [
+        42
+      ]
     },
     "exact_commands": [
       "python3 -m py_compile benchmarks/ci_ann_smoke.py",
@@ -151,7 +153,9 @@
           "target_max": 1.0,
           "baseline_ref": "python_umap_learn",
           "trial_count": 1,
-          "per_trial": [1.0],
+          "per_trial": [
+            1.0
+          ],
           "aggregate_method": "mean",
           "measurement_scope": "ANN/e2e smoke gate in CI",
           "raw_artifact_refs": [
@@ -180,6 +184,27 @@
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
         "notes": "Thread pinning and seed controls are explicit in script and workflow invocation."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track5-ci-ann",
+      "implementation_owner": "worker-track5",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed ANN/e2e smoke gate wiring is scoped, deterministic, and CI-fairness controls remain explicit.",
+      "reviewed_commit": "51d98347247634e81df46c5b30509c9457a0d99d",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Smoke gate keeps fixed seed, explicit thread env, and bounded sample caps; fairness thresholds remain explicit."
       },
       "findings": [],
       "style_policy_check": {
