@@ -483,6 +483,12 @@ def benchmark_e2e(
             "max_rss_std_mb": rss_stat["std"],
             "elapsed_samples_sec": raw[impl]["elapsed_sec"],
             "max_rss_samples_mb": raw[impl]["max_rss_mb"],
+            "context": {
+                "mode": "e2e_default_ann",
+                "metric": "euclidean",
+                "precomputed_knn": False,
+                "use_approximate_knn": impl == "rust_umap",
+            },
         }
 
     embeddings = {
@@ -535,6 +541,14 @@ def benchmark_algo_exact(
             "fit_times_sec": payload.get("fit_times_sec", []),
             "process_elapsed_sec": run.elapsed_sec,
             "process_max_rss_mb": run.max_rss_mb,
+            "context": {
+                "mode": payload.get("mode", "fit"),
+                "metric": payload.get("metric", "euclidean"),
+                "knn_metric": payload.get("knn_metric", payload.get("metric", "euclidean")),
+                "precomputed_knn": bool(payload.get("precomputed_knn", True)),
+                "warmup": payload.get("warmup", warmup),
+                "repeats": payload.get("repeats", repeats),
+            },
         }
         final_embedding_paths[impl] = out_path
 
@@ -618,6 +632,7 @@ def main() -> None:
                 "e2e_default_ann",
                 "algo_exact_shared_knn",
             ],
+            "metric": "euclidean",
             "datasets": [],
         },
         "groups": {

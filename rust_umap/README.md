@@ -27,6 +27,7 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
   - `fit_csv`
   - `bench_fit_csv`
   - optional `--metric euclidean|manhattan|cosine`
+  - optional `--knn-metric ...` guard in precomputed-kNN mode
 
 ## What is intentionally out of scope (for this version)
 
@@ -48,7 +49,7 @@ cargo run --release
 Repository automation keeps benchmark validation staged in this order:
 
 1. Compare consistency against public implementations.
-2. Check for euclidean no-regression on timing and memory.
+2. Check for no-regression on timing and memory (metric matrix: euclidean/manhattan/cosine).
 3. Run a deeper optimization-stage benchmark report when explicitly requested.
 
 The Rust crate remains the unit under test in all three stages.
@@ -60,6 +61,17 @@ cargo run --release --bin fit_csv -- \
   data.csv embedding.csv \
   15 2 200 42 spectral false 30 10 4096 fit \
   --metric cosine
+```
+
+For precomputed kNN input, add explicit metric guard:
+
+```bash
+cargo run --release --bin fit_csv -- \
+  data.csv embedding.csv \
+  15 2 200 42 spectral false 30 10 4096 fit_precomputed \
+  knn_idx.csv knn_dist.csv \
+  --metric cosine \
+  --knn-metric cosine
 ```
 
 To benchmark repeated fits:
@@ -105,5 +117,10 @@ For inverse-transform quality and Euclidean fit no-regression checks:
 
 ```bash
 python rust_umap/benchmarks/eval_inverse_quality.py --dataset all
-python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all
+python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+  --output-json rust_umap/benchmarks/current_fit_regression.json
+python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+  --baseline-report rust_umap/benchmarks/current_fit_regression.json
 ```
+
+`eval_inverse_quality.py` now fails on asymmetric success/failure by default to avoid biased comparisons.

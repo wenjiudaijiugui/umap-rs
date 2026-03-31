@@ -56,9 +56,9 @@ jobs:
         with:
           r-version: '4.3'
       - name: Install Python benchmark deps
-        run: python -m pip install --upgrade pip && python -m pip install numpy scipy scikit-learn umap-learn
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
       - name: Install R benchmark deps
-        run: Rscript -e 'install.packages(c("uwot", "jsonlite"), repos="https://cloud.r-project.org")'
+        run: Rscript benchmarks/install_r_bench_deps.R
       - name: Public implementation consistency smoke gate
         run: |
           python benchmarks/ci_consistency_smoke.py \
@@ -73,8 +73,12 @@ jobs:
 
   no-regression-smoke:
     needs: [changes, consistency-smoke]
-    if: github.event_name == 'pull_request' && needs.changes.outputs.core_or_benchmark == 'true'
+    if: needs.changes.outputs.core_or_benchmark == 'true'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        metric: [euclidean, manhattan, cosine]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -86,19 +90,40 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Materialize baseline worktree
+      - name: Resolve baseline ref
+        id: baseline
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
         run: |
-          git fetch origin "$BASE_SHA" --depth=1
-          git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASE_SHA"
-      - name: Euclidean no-regression smoke gate
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" && -n "${PR_BASE_SHA}" ]]; then
+            BASE_REF="$PR_BASE_SHA"
+          elif [[ "$EVENT_NAME" == "push" && -n "${PUSH_BEFORE_SHA}" && "${PUSH_BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
+            BASE_REF="$PUSH_BEFORE_SHA"
+          else
+            BASE_REF="HEAD~1"
+          fi
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+      - name: Materialize baseline worktree
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ steps.baseline.outputs.base_ref }}"
+          if [[ "$BASE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            git fetch origin "$BASE_REF" --depth=1
+          else
+            git fetch origin main --depth=2
+          fi
+          git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASE_REF"
+      - name: Metric no-regression smoke gate
         run: |
           python benchmarks/ci_no_regression.py \
             --candidate-root "$GITHUB_WORKSPACE" \
-            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" | tee no-regression-smoke.json
+            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
+            --metric "${{ matrix.metric }}" | tee "no-regression-smoke-${{ matrix.metric }}.json"
       - name: Upload no-regression artifact
         uses: actions/upload-artifact@v4
         with:
-          name: no-regression-smoke
-          path: no-regression-smoke.json
+          name: no-regression-smoke-${{ matrix.metric }}
+          path: no-regression-smoke-${{ matrix.metric }}.json

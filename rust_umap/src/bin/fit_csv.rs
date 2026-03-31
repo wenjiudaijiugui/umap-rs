@@ -30,8 +30,9 @@ fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
     }
 }
 
-fn extract_metric_arg(args: &mut Vec<String>) -> Result<Metric, Box<dyn Error>> {
+fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>), Box<dyn Error>> {
     let mut metric = Metric::Euclidean;
+    let mut knn_metric: Option<Metric> = None;
     let mut i = 1;
     while i < args.len() {
         if args[i] == "--metric" {
@@ -40,11 +41,17 @@ fn extract_metric_arg(args: &mut Vec<String>) -> Result<Metric, Box<dyn Error>> 
             }
             metric = parse_metric(&args[i + 1])?;
             args.drain(i..=i + 1);
+        } else if args[i] == "--knn-metric" {
+            if i + 1 >= args.len() {
+                return Err("--knn-metric requires a value".into());
+            }
+            knn_metric = Some(parse_metric(&args[i + 1])?);
+            args.drain(i..=i + 1);
         } else {
             i += 1;
         }
     }
-    Ok(metric)
+    Ok((metric, knn_metric))
 }
 
 fn read_csv(path: &Path) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
@@ -110,7 +117,8 @@ fn usage() {
     eprintln!(
         "Usage:\n  fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \
           <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> \
-          <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] [--metric euclidean|manhattan|cosine]\n\
+          <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] \
+          [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]\n\
           mode=fit_precomputed extra args: <knn_idx.csv> <knn_dist.csv>\n\
           mode=transform|inverse extra args: <ref_input.csv>"
     );
@@ -118,7 +126,7 @@ fn usage() {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let metric = extract_metric_arg(&mut args)?;
+    let (metric, knn_metric_opt) = extract_metric_args(&mut args)?;
     if args.len() < 12 {
         usage();
         return Err("insufficient arguments".into());
@@ -142,6 +150,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         "fit"
     };
+    if mode != "fit_precomputed" && knn_metric_opt.is_some() {
+        return Err("--knn-metric is only valid in fit_precomputed mode".into());
+    }
 
     let params = UmapParams {
         n_neighbors,
@@ -180,7 +191,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let x = read_csv(input_path)?;
             let knn_idx = read_csv_usize(Path::new(&args[13]))?;
             let knn_dist = read_csv(Path::new(&args[14]))?;
-            let emb = model.fit_transform_with_knn(&x, &knn_idx, &knn_dist)?;
+            let knn_metric = knn_metric_opt.unwrap_or(metric);
+            let emb = model.fit_transform_with_knn_metric(&x, &knn_idx, &knn_dist, knn_metric)?;
             write_csv(output_path, &emb)?;
         }
         "transform" => {

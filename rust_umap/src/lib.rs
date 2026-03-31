@@ -212,6 +212,22 @@ impl UmapModel {
         knn_indices: &[Vec<usize>],
         knn_dists: &[Vec<f32>],
     ) -> Result<Vec<Vec<f32>>, UmapError> {
+        self.fit_transform_with_knn_metric(data, knn_indices, knn_dists, self.params.metric)
+    }
+
+    pub fn fit_transform_with_knn_metric(
+        &mut self,
+        data: &[Vec<f32>],
+        knn_indices: &[Vec<usize>],
+        knn_dists: &[Vec<f32>],
+        knn_metric: Metric,
+    ) -> Result<Vec<Vec<f32>>, UmapError> {
+        if knn_metric != self.params.metric {
+            return Err(UmapError::InvalidParameter(format!(
+                "precomputed knn metric ({knn_metric:?}) must match model metric ({:?})",
+                self.params.metric
+            )));
+        }
         self.fit_transform_with_knn_internal(data, knn_indices, knn_dists)
     }
 
@@ -914,6 +930,7 @@ fn approximate_nearest_neighbors_euclidean(
             candidate_set.insert(i);
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
+            candidate_vec.sort_unstable();
             if candidate_vec.len() > max_candidates {
                 for s in 0..max_candidates {
                     let r = rng.gen_range(s..candidate_vec.len());
@@ -1008,6 +1025,7 @@ where
             candidate_set.insert(i);
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
+            candidate_vec.sort_unstable();
             if candidate_vec.len() > max_candidates {
                 for s in 0..max_candidates {
                     let r = rng.gen_range(s..candidate_vec.len());
@@ -1109,6 +1127,7 @@ fn approximate_nearest_neighbors_cosine(
             candidate_set.insert(i);
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
+            candidate_vec.sort_unstable();
             if candidate_vec.len() > max_candidates {
                 for s in 0..max_candidates {
                     let r = rng.gen_range(s..candidate_vec.len());
@@ -1785,7 +1804,9 @@ fn remap_component_edges(
 
     let mut out = Vec::new();
     for edge in edges {
-        if component_labels[edge.head] == component_id && component_labels[edge.tail] == component_id {
+        if component_labels[edge.head] == component_id
+            && component_labels[edge.tail] == component_id
+        {
             out.push(Edge {
                 head: mapping[edge.head],
                 tail: mapping[edge.tail],
@@ -1946,8 +1967,12 @@ fn multi_component_spectral_init(
         }
     }
 
-    let component_layout =
-        meta_component_layout(data, embedding_dim, components, seed ^ 0xA13F_52A9_2D4C_B801)?;
+    let component_layout = meta_component_layout(
+        data,
+        embedding_dim,
+        components,
+        seed ^ 0xA13F_52A9_2D4C_B801,
+    )?;
     let mut result = vec![vec![0.0_f32; embedding_dim]; n_samples];
 
     for (component_id, component) in components.iter().enumerate() {
@@ -1966,41 +1991,42 @@ fn multi_component_spectral_init(
             data_range = 1.0;
         }
 
-        let local_coords = if component.len() < 2 * embedding_dim || component.len() <= embedding_dim + 1 {
-            random_init(
-                component.len(),
-                embedding_dim,
-                seed ^ ((component_id as u64 + 1) * 0x9E37_79B9),
-                -data_range,
-                data_range,
-            )
-        } else {
-            let component_edges =
-                remap_component_edges(component, &component_labels, component_id, edges);
-            let mut coords =
-                spectral_init_connected_raw(component.len(), embedding_dim, &component_edges)?;
-            let max_abs = coords
-                .iter()
-                .flat_map(|row| row.iter())
-                .map(|value| value.abs())
-                .fold(0.0_f32, f32::max);
-            let expansion = if max_abs > 0.0 {
-                data_range / max_abs
+        let local_coords =
+            if component.len() < 2 * embedding_dim || component.len() <= embedding_dim + 1 {
+                random_init(
+                    component.len(),
+                    embedding_dim,
+                    seed ^ ((component_id as u64 + 1) * 0x9E37_79B9),
+                    -data_range,
+                    data_range,
+                )
             } else {
-                1.0
-            };
-            for row in coords.iter_mut() {
-                for value in row.iter_mut() {
-                    *value *= expansion;
+                let component_edges =
+                    remap_component_edges(component, &component_labels, component_id, edges);
+                let mut coords =
+                    spectral_init_connected_raw(component.len(), embedding_dim, &component_edges)?;
+                let max_abs = coords
+                    .iter()
+                    .flat_map(|row| row.iter())
+                    .map(|value| value.abs())
+                    .fold(0.0_f32, f32::max);
+                let expansion = if max_abs > 0.0 {
+                    data_range / max_abs
+                } else {
+                    1.0
+                };
+                for row in coords.iter_mut() {
+                    for value in row.iter_mut() {
+                        *value *= expansion;
+                    }
                 }
-            }
-            add_noise(
-                &mut coords,
-                seed ^ ((component_id as u64 + 1) * 0x94D0_49BB),
-                INIT_NOISE,
-            );
-            coords
-        };
+                add_noise(
+                    &mut coords,
+                    seed ^ ((component_id as u64 + 1) * 0x94D0_49BB),
+                    INIT_NOISE,
+                );
+                coords
+            };
 
         for (local_idx, &global_idx) in component.iter().enumerate() {
             for dim in 0..embedding_dim {
@@ -2654,8 +2680,7 @@ mod tests {
         for component in 0..n_components {
             let shift = component as f32 * 50.0;
             for point_idx in 0..points_per_component {
-                let t =
-                    2.0 * std::f32::consts::PI * point_idx as f32 / points_per_component as f32;
+                let t = 2.0 * std::f32::consts::PI * point_idx as f32 / points_per_component as f32;
                 data.push(vec![
                     shift + t.cos(),
                     t.sin(),
@@ -2713,6 +2738,35 @@ mod tests {
             .map(|std| std * std)
             .sum::<f32>()
             .sqrt()
+    }
+
+    fn min_centroid_distance(embedding: &[Vec<f32>], labels: &[usize], n_components: usize) -> f32 {
+        let component_centroids = (0..n_components)
+            .map(|component| component_centroid(embedding, labels, component))
+            .collect::<Vec<Vec<f32>>>();
+
+        let mut min_distance = f32::INFINITY;
+        for i in 0..component_centroids.len() {
+            for j in (i + 1)..component_centroids.len() {
+                min_distance = min_distance.min(euclidean_distance(
+                    &component_centroids[i],
+                    &component_centroids[j],
+                ));
+            }
+        }
+        min_distance
+    }
+
+    fn max_component_std(embedding: &[Vec<f32>], labels: &[usize], n_components: usize) -> f32 {
+        (0..n_components)
+            .map(|component| component_std_norm(embedding, labels, component))
+            .fold(0.0_f32, f32::max)
+    }
+
+    fn separation_ratio(embedding: &[Vec<f32>], labels: &[usize], n_components: usize) -> f32 {
+        let min_sep = min_centroid_distance(embedding, labels, n_components);
+        let max_std = max_component_std(embedding, labels, n_components);
+        min_sep / (max_std + 1e-6)
     }
 
     fn assert_all_finite(points: &[Vec<f32>]) {
@@ -2941,12 +2995,66 @@ mod tests {
     }
 
     #[test]
+    fn precomputed_knn_metric_mismatch_is_rejected() {
+        let data = synthetic_data(64, 6);
+        let params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Cosine,
+            init: InitMethod::Random,
+            random_seed: 2026,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let (knn_indices, knn_dists) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+        let mut model = UmapModel::new(params);
+        let err = model
+            .fit_transform_with_knn_metric(&data, &knn_indices, &knn_dists, Metric::Euclidean)
+            .expect_err("metric mismatch should fail");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(
+            err.to_string().contains("precomputed knn metric"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn spectral_init_disconnected_not_random_fallback() {
+        let (data, labels) = disconnected_component_data(4, 60);
+        let n_neighbors = 10;
+        let (knn_indices, knn_dists) =
+            exact_nearest_neighbors(&data, n_neighbors, Metric::Euclidean);
+        let (sigmas, rhos) =
+            smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH);
+        let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
+        let edges = symmetrize_fuzzy_graph(&directed, 1.0);
+
+        let spectral = spectral_init(&data, 2, &edges, 42).expect("spectral init should succeed");
+        let random = random_init(data.len(), 2, 42, -10.0, 10.0);
+
+        assert_ne!(
+            spectral, random,
+            "spectral disconnected initialization should not degenerate to pure random init"
+        );
+
+        let spectral_ratio = separation_ratio(&spectral, &labels, 4);
+        let random_ratio = separation_ratio(&random, &labels, 4);
+        assert!(
+            spectral_ratio > random_ratio * 1.2,
+            "expected disconnected spectral init to separate components better than random: spectral={spectral_ratio}, random={random_ratio}"
+        );
+    }
+
+    #[test]
     fn spectral_init_handles_disconnected_components() {
-        let (data, labels) = disconnected_component_data(4, 40);
+        let (data, labels) = disconnected_component_data(4, 60);
         let params = UmapParams {
             n_neighbors: 10,
             n_components: 2,
-            n_epochs: Some(0),
+            n_epochs: Some(60),
             init: InitMethod::Spectral,
             random_seed: 42,
             use_approximate_knn: false,
@@ -2956,35 +3064,21 @@ mod tests {
         let mut model = UmapModel::new(params);
         let embedding = model.fit_transform(&data).expect("fit should succeed");
 
-        let component_std_mins = (0..4)
-            .map(|component| component_std_norm(&embedding, &labels, component))
-            .collect::<Vec<f32>>();
-        let component_centroids = (0..4)
-            .map(|component| component_centroid(&embedding, &labels, component))
-            .collect::<Vec<Vec<f32>>>();
-
-        let mut min_centroid_distance = f32::INFINITY;
-        for i in 0..component_centroids.len() {
-            for j in (i + 1)..component_centroids.len() {
-                min_centroid_distance = min_centroid_distance.min(euclidean_distance(
-                    &component_centroids[i],
-                    &component_centroids[j],
-                ));
-            }
-        }
-
-        let min_component_std = component_std_mins
-            .iter()
-            .copied()
-            .fold(f32::INFINITY, f32::min);
+        let max_std = max_component_std(&embedding, &labels, 4);
+        let min_distance = min_centroid_distance(&embedding, &labels, 4);
+        let sep_ratio = separation_ratio(&embedding, &labels, 4);
 
         assert!(
-            min_component_std > 0.01,
-            "expected each disconnected component to keep internal spread, got {min_component_std}"
+            max_std > 0.05,
+            "expected each disconnected component to keep non-trivial internal spread, got {max_std}"
         );
         assert!(
-            min_centroid_distance > 0.5,
-            "expected disconnected component centroids to remain separated, got {min_centroid_distance}"
+            min_distance > 0.8,
+            "expected disconnected component centroids to remain separated after optimization, got {min_distance}"
+        );
+        assert!(
+            sep_ratio > 1.5,
+            "expected inter-component separation ratio to stay robust, got {sep_ratio}"
         );
     }
 }

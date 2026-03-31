@@ -31,8 +31,9 @@ fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
     }
 }
 
-fn extract_metric_arg(args: &mut Vec<String>) -> Result<Metric, Box<dyn Error>> {
+fn extract_metric_args(args: &mut Vec<String>) -> Result<(Metric, Option<Metric>), Box<dyn Error>> {
     let mut metric = Metric::Euclidean;
+    let mut knn_metric: Option<Metric> = None;
     let mut i = 1;
     while i < args.len() {
         if args[i] == "--metric" {
@@ -41,11 +42,25 @@ fn extract_metric_arg(args: &mut Vec<String>) -> Result<Metric, Box<dyn Error>> 
             }
             metric = parse_metric(&args[i + 1])?;
             args.drain(i..=i + 1);
+        } else if args[i] == "--knn-metric" {
+            if i + 1 >= args.len() {
+                return Err("--knn-metric requires a value".into());
+            }
+            knn_metric = Some(parse_metric(&args[i + 1])?);
+            args.drain(i..=i + 1);
         } else {
             i += 1;
         }
     }
-    Ok(metric)
+    Ok((metric, knn_metric))
+}
+
+fn metric_name(metric: Metric) -> &'static str {
+    match metric {
+        Metric::Euclidean => "euclidean",
+        Metric::Manhattan => "manhattan",
+        Metric::Cosine => "cosine",
+    }
 }
 
 fn read_csv(path: &Path) -> Result<Vec<Vec<f32>>, Box<dyn Error>> {
@@ -107,7 +122,7 @@ fn write_csv(path: &Path, arr: &[Vec<f32>]) -> Result<(), Box<dyn Error>> {
 
 fn usage() {
     eprintln!(
-        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine]"
+        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]"
     );
 }
 
@@ -129,7 +144,7 @@ fn mean_std(vals: &[f64]) -> (f64, f64) {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let metric = extract_metric_arg(&mut args)?;
+    let (metric, knn_metric_opt) = extract_metric_args(&mut args)?;
     if args.len() < 14 {
         usage();
         return Err("insufficient arguments".into());
@@ -158,6 +173,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
+    if precomputed.is_none() && knn_metric_opt.is_some() {
+        return Err("--knn-metric requires precomputed kNN inputs".into());
+    }
+    let knn_metric = knn_metric_opt.unwrap_or(metric);
 
     let data = read_csv(input_path)?;
 
@@ -189,7 +208,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         let mut model = UmapModel::new(params.clone());
         let t0 = Instant::now();
         let embedding = if let Some((ref idx, ref dist)) = precomputed {
-            model.fit_transform_with_knn(&data, idx, dist)?
+            model.fit_transform_with_knn_metric(&data, idx, dist, knn_metric)?
         } else {
             model.fit_transform(&data)?
         };
@@ -206,7 +225,28 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     let (mean, std) = mean_std(&times);
 
-    print!("{{\"fit_times_sec\":[");
+    print!(
+        "{{\"mode\":\"fit\",\
+\"metric\":\"{}\",\
+\"knn_metric\":\"{}\",\
+\"precomputed_knn\":{},\
+\"n_neighbors\":{},\
+\"n_components\":{},\
+\"n_epochs\":{},\
+\"seed\":{},\
+\"warmup\":{},\
+\"repeats\":{},\
+\"fit_times_sec\":[",
+        metric_name(metric),
+        metric_name(knn_metric),
+        precomputed.is_some(),
+        n_neighbors,
+        n_components,
+        n_epochs,
+        seed,
+        warmup,
+        repeats
+    );
     for (i, t) in times.iter().enumerate() {
         if i > 0 {
             print!(",");

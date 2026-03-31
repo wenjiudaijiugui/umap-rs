@@ -6,7 +6,7 @@ on:
       baseline_ref:
         description: baseline ref for no-regression comparison
         required: false
-        default: origin/main
+        default: ''
       warmup:
         description: warmup runs per implementation
         required: false
@@ -45,9 +45,9 @@ jobs:
         with:
           r-version: '4.3'
       - name: Install Python benchmark deps
-        run: python -m pip install --upgrade pip && python -m pip install numpy scipy scikit-learn umap-learn
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
       - name: Install R benchmark deps
-        run: Rscript -e 'install.packages(c("uwot", "jsonlite"), repos="https://cloud.r-project.org")'
+        run: Rscript benchmarks/install_r_bench_deps.R
       - name: Public implementation consistency smoke gate
         run: |
           python benchmarks/ci_consistency_smoke.py \
@@ -63,6 +63,10 @@ jobs:
   no-regression-smoke:
     needs: consistency-smoke
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        metric: [euclidean, manhattan, cosine]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,22 +78,39 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Materialize baseline worktree
+      - name: Resolve baseline ref
+        id: baseline
         env:
-          BASELINE_REF: ${{ github.event.inputs.baseline_ref || 'origin/main' }}
+          BASELINE_REF_INPUT: ${{ github.event.inputs.baseline_ref }}
         run: |
-          git fetch origin main --depth=1
+          set -euo pipefail
+          if [[ -n "${BASELINE_REF_INPUT}" ]]; then
+            BASELINE_REF="${BASELINE_REF_INPUT}"
+          else
+            BASELINE_REF="HEAD~1"
+          fi
+          echo "baseline_ref=${BASELINE_REF}" >> "$GITHUB_OUTPUT"
+      - name: Materialize baseline worktree
+        run: |
+          set -euo pipefail
+          BASELINE_REF="${{ steps.baseline.outputs.baseline_ref }}"
+          if [[ "$BASELINE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            git fetch origin "$BASELINE_REF" --depth=1
+          else
+            git fetch origin main --depth=2
+          fi
           git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASELINE_REF"
-      - name: Euclidean no-regression smoke gate
+      - name: Metric no-regression smoke gate
         run: |
           python benchmarks/ci_no_regression.py \
             --candidate-root "$GITHUB_WORKSPACE" \
-            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" | tee no-regression-smoke.json
+            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
+            --metric "${{ matrix.metric }}" | tee "no-regression-smoke-${{ matrix.metric }}.json"
       - name: Upload no-regression artifact
         uses: actions/upload-artifact@v4
         with:
-          name: deep-no-regression-smoke
-          path: no-regression-smoke.json
+          name: deep-no-regression-smoke-${{ matrix.metric }}
+          path: no-regression-smoke-${{ matrix.metric }}.json
 
   optimization-report:
     needs: no-regression-smoke
@@ -108,9 +129,9 @@ jobs:
         with:
           r-version: '4.3'
       - name: Install Python benchmark deps
-        run: python -m pip install --upgrade pip && python -m pip install numpy scipy scikit-learn umap-learn
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
       - name: Install R benchmark deps
-        run: Rscript -e 'install.packages(c("uwot", "jsonlite"), repos="https://cloud.r-project.org")'
+        run: Rscript benchmarks/install_r_bench_deps.R
       - name: Run fair benchmark report
         env:
           WARMUP: ${{ github.event.inputs.warmup || '1' }}
