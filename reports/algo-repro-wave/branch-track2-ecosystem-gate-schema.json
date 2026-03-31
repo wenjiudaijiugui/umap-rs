@@ -86,7 +86,9 @@
     },
     "seed_manifest": {
       "global_seed": 42,
-      "trial_seeds": [42]
+      "trial_seeds": [
+        42
+      ]
     },
     "exact_commands": [
       "python3 benchmarks/ci_ecosystem_python_binding_gate.py --report-json benchmarks/report_ecosystem_python_binding.json",
@@ -132,7 +134,10 @@
           "target_max": 0.03,
           "baseline_ref": "python_umap_learn",
           "trial_count": 2,
-          "per_trial": [0.0043, 0.0056],
+          "per_trial": [
+            0.0043,
+            0.0056
+          ],
           "aggregate_method": "max",
           "measurement_scope": "algo_exact_shared_knn",
           "raw_artifact_refs": [
@@ -149,7 +154,10 @@
           "target_max": 1.35,
           "baseline_ref": "python_umap_learn",
           "trial_count": 2,
-          "per_trial": [5.1238, 3.1434],
+          "per_trial": [
+            5.1238,
+            3.1434
+          ],
           "aggregate_method": "max",
           "measurement_scope": "algo_exact_shared_knn",
           "timing_boundary": "fit_mean_sec",
@@ -194,6 +202,38 @@
         "notes": "No benchmark boundary distortions introduced."
       },
       "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track2-ecosystem-schema",
+      "implementation_owner": "track2-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed legacy group alias support is backward-compatible and preserves strict reliability semantics.",
+      "reviewed_commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Alias normalization does not change metric formulas, seeds, thread env, or threshold semantics in strict checks."
+      },
+      "findings": [
+        {
+          "severity": "low",
+          "title": "Legacy mixed-group alias mode does not enforce knn strategy disclosure tags",
+          "risk": "When gating legacy reports, strategy equivalence metadata may be absent, reducing explicit fairness provenance in summaries.",
+          "recommendation": "Treat legacy alias mode as transitional and regenerate reports with canonical group keys plus explicit knn_strategy.equivalence fields.",
+          "evidence_refs": [
+            "benchmarks/ci_ecosystem_python_binding_gate.py:173",
+            "benchmarks/ci_ecosystem_python_binding_gate.py:186"
+          ]
+        }
+      ],
       "style_policy_check": {
         "defensive_programming_minimized": true,
         "redundancy_minimized": true,
