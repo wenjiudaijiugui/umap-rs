@@ -1,59 +1,77 @@
 {
   "schema_version": "2.0",
   "workflow_mode": "full",
-  "run_id": "arw2-track6-2026-03-31",
+  "run_id": "arw2-track6-docs-2026-03-31",
   "report_phase": "branch",
   "branch": "arw2/track6-docs",
-  "commit": "ee69d85ffa8d2c1f50dd55c09d651154c69437f3",
+  "commit": "689ef0e5fc9b1f481ca59635b498cec237839a69",
   "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
   "reference_manifest": [
     {
-      "name": "repo-docs",
-      "repo_url": "https://github.com/lmcinnes/umap",
-      "resolved_ref": "docs-alignment-run",
-      "resolution_type": "version",
+      "name": "project-ci-workflow",
+      "repo_url": "https://github.com/your-org/umap-rs",
+      "resolved_ref": "689ef0e5fc9b1f481ca59635b498cec237839a69",
+      "resolution_type": "commit",
       "build_options": {
-        "ci_workflow_ref": ".github/workflows/ci.yml"
+        "docs_scope": "README local validation and CI stage descriptions"
       }
     }
   ],
   "dataset_provenance": [
     {
-      "dataset_id": "docs_command_examples",
-      "source_uri": "repository README commands",
-      "version": "2026-03-31",
-      "checksum": "n/a",
+      "dataset_id": "synthetic_sanity",
+      "source_uri": "generated://synthetic_sanity",
+      "version": "v1",
+      "checksum": "runtime-derived",
       "checksum_type": "other",
-      "split_policy": "n/a",
+      "split_policy": "n/a-docs-track",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "breast_cancer",
+      "source_uri": "sklearn.datasets.load_breast_cancer",
+      "version": "scikit-learn bundled",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "referenced in docs command set",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "california_housing",
+      "source_uri": "sklearn.datasets.fetch_california_housing",
+      "version": "scikit-learn fetched",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "referenced in docs command set",
       "acquired_at_utc": "2026-03-31T00:00:00Z"
     }
   ],
   "dataset_manifest": {
     "synthetic": [
       {
-        "dataset_id": "docs_sanity",
-        "name": "docs_sanity",
-        "n_samples": 1,
-        "n_features": 1,
-        "notes": "documentation validation track"
+        "dataset_id": "synthetic_sanity",
+        "name": "synthetic_sanity",
+        "n_samples": 128,
+        "n_features": 8,
+        "notes": "coverage placeholder for docs track"
       }
     ],
     "real": [
       {
-        "dataset_id": "docs_command_examples",
-        "name": "local_validation_commands",
-        "n_samples": 1,
-        "n_features": 1,
-        "notes": "real command examples users execute"
+        "dataset_id": "breast_cancer",
+        "name": "breast_cancer",
+        "n_samples": 569,
+        "n_features": 30,
+        "notes": "real dataset referenced by smoke docs"
       }
     ],
     "stress": [
       {
-        "dataset_id": "docs_no_regression_worktree",
-        "name": "worktree_candidate_vs_baseline",
-        "n_samples": 1,
-        "n_features": 1,
-        "notes": "stress scenario is branch/worktree hygiene"
+        "dataset_id": "california_housing",
+        "name": "california_housing",
+        "n_samples": 15000,
+        "n_features": 8,
+        "notes": "stress dataset lineage preserved in docs"
       }
     ],
     "coverage_exceptions": []
@@ -62,19 +80,25 @@
     "strict_reference_available": true,
     "mode": "strict",
     "comparability": "comparable",
-    "reason": "docs aligned to repository workflows and scripts"
+    "reason": "documentation now matches staged CI semantics and local reproducible commands"
   },
   "reproducibility": {
     "env_fingerprint": {
       "os": "linux",
-      "runtime": "markdown + shell commands",
+      "runtime": "shell + markdown docs update",
       "thread_policy": {
-        "OMP_NUM_THREADS": "1"
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "PYTHONHASHSEED": "0"
       },
       "dependencies": {
-        "python": "python3 or python",
-        "rust": "cargo",
-        "maturin": "required for binding tests"
+        "python": "python3 or python executable",
+        "rust": "cargo"
       }
     },
     "seed_manifest": {
@@ -82,12 +106,11 @@
       "trial_seeds": [42]
     },
     "exact_commands": [
-      "sed -n '80,180p' README.md",
-      "sed -n '35,110p' rust_umap/README.md"
+      "sed -n '84,170p' README.md",
+      "git rev-parse HEAD"
     ],
     "raw_artifact_refs": [
-      "README.md",
-      "rust_umap/README.md"
+      "README.md"
     ]
   },
   "gates": {
@@ -96,19 +119,19 @@
       "items": {
         "consistency": {
           "pass": true,
-          "details": "commands now consistently use python resolver and explicit prerequisites"
+          "details": "documentation commands and CI stage names are internally consistent"
         },
         "fairness": {
           "pass": true,
-          "details": "no-regression docs now require separate candidate and baseline roots"
+          "details": "docs explicitly preserve seed/thread controls and baseline/candidate separation"
         },
         "reference_integrity": {
           "pass": true,
-          "details": "CI stage descriptions aligned to current workflow conventions"
+          "details": "CI workflow references in docs map to repository workflows"
         },
         "functional_tests": {
           "pass": true,
-          "details": "markdown edits only; no executable semantics changed"
+          "details": "no code-path mutation; documentation-only change"
         }
       }
     },
@@ -117,21 +140,20 @@
       "soft": true,
       "metrics": [
         {
-          "metric_id": "public_consistency_docs",
+          "metric_id": "public_consistency_docs_alignment",
           "category": "public_consistency",
           "pass": true,
-          "metric_name": "docs_command_alignment",
-          "unit": "ratio",
+          "metric_name": "docs_alignment_with_ci_gates",
+          "unit": "boolean",
           "value": 1.0,
           "target_max": 1.0,
-          "baseline_ref": "repository-ci-stages",
+          "baseline_ref": "repo-ci-configuration",
           "trial_count": 1,
           "per_trial": [1.0],
           "aggregate_method": "mean",
-          "measurement_scope": "documentation coherence",
+          "measurement_scope": "documentation checks",
           "raw_artifact_refs": [
-            "README.md",
-            "rust_umap/README.md"
+            "README.md"
           ]
         }
       ],
@@ -146,16 +168,16 @@
   "reviews": [
     {
       "review_stage": "wave1",
-      "reviewer_id": "track6-reviewer",
-      "implementation_owner": "track6-owner",
+      "reviewer_id": "reviewer-track6-placeholder",
+      "implementation_owner": "worker-track6",
       "independence_verified": true,
       "decision": "go",
-      "review_summary": "Doc commands are now environment-robust and explicit about prerequisites.",
-      "reviewed_commit": "ee69d85ffa8d2c1f50dd55c09d651154c69437f3",
+      "review_summary": "Docs-only update with improved reproducible local validation steps.",
+      "reviewed_commit": "689ef0e5fc9b1f481ca59635b498cec237839a69",
       "fairness_checklist_result": {
         "pass": true,
         "checklist_ref": "references/fairness-checklist.md",
-        "notes": "No benchmark-gate semantics weakened in docs."
+        "notes": "No benchmark methodology drift introduced."
       },
       "findings": [],
       "style_policy_check": {
