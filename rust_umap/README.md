@@ -165,10 +165,10 @@ This implementation prioritizes clarity and reproducibility over large-scale per
 For inverse-transform quality and Euclidean fit no-regression checks:
 
 ```bash
-python rust_umap/benchmarks/eval_inverse_quality.py --dataset all
-python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+python3 rust_umap/benchmarks/eval_inverse_quality.py --dataset all
+python3 rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
   --output-json rust_umap/benchmarks/current_fit_regression.json
-python rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
+python3 rust_umap/benchmarks/eval_euclidean_fit_regression.py --dataset all \
   --baseline-report rust_umap/benchmarks/current_fit_regression.json
 ```
 

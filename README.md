@@ -40,7 +40,8 @@ for cross-ecosystem usage and fair benchmarking against `umap-learn`.
 ### Build and install binding locally
 
 ```bash
-python -m pip install --upgrade pip maturin
+PYTHON_BIN="$(command -v python3 || command -v python)"
+$PYTHON_BIN -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```
 
@@ -70,8 +71,8 @@ PY
 ### Ecosystem benchmark (umap-learn vs rust_umap_py)
 
 ```bash
-python benchmarks/compare_ecosystem_python_binding.py \
-  --python-bin python \
+python3 benchmarks/compare_ecosystem_python_binding.py \
+  --python-bin "${PYTHON_BIN:-python3}" \
   --warmup 1 \
   --repeats 3 \
   --sample-cap-consistency 2000
