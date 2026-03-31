@@ -41,6 +41,10 @@ for cross-ecosystem usage and fair benchmarking against `umap-learn`.
 
 ```bash
 PYTHON_BIN="$(command -v python3 || command -v python)"
+if [ -z "$PYTHON_BIN" ]; then
+  echo "python3/python not found" >&2
+  exit 1
+fi
 $PYTHON_BIN -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```
@@ -48,7 +52,8 @@ maturin develop --manifest-path rust_umap_py/Cargo.toml
 ### End-to-end call example (library API)
 
 ```bash
-python - <<'PY'
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" - <<'PY'
 import numpy as np
 from rust_umap_py import Umap
 
@@ -71,8 +76,9 @@ PY
 ### Ecosystem benchmark (umap-learn vs rust_umap_py)
 
 ```bash
-python3 benchmarks/compare_ecosystem_python_binding.py \
-  --python-bin "${PYTHON_BIN:-python3}" \
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" benchmarks/compare_ecosystem_python_binding.py \
+  --python-bin "$PYTHON_BIN" \
   --warmup 1 \
   --repeats 3 \
   --sample-cap-consistency 2000
@@ -84,20 +90,25 @@ Outputs:
 
 ## CI and Benchmark Gates
 
-The repository CI is intentionally staged:
+The repository CI and benchmark automation currently runs in these workflow stages:
 
-1. Public-implementation consistency smoke check.
-2. ANN/e2e smoke check against public implementation baselines.
-3. No-regression smoke check against a baseline branch (metric matrix: euclidean/manhattan/cosine).
-4. Ecosystem Python binding smoke + machine-readable gate.
-5. Optional optimization-stage benchmark report in a deeper manual/scheduled workflow.
+1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `no-regression-smoke` (metric matrix: euclidean/manhattan/cosine).
+2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` (binding tests + ecosystem benchmark smoke + machine-readable gate).
+3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled deep reporting via `consistency-smoke` -> `no-regression-smoke` -> `optimization-report`.
 
-Fast PR validation lives in `.github/workflows/ci.yml`.
-Deeper benchmark reporting lives in `.github/workflows/deep-benchmark-report.yml`.
+`benchmarks/ci_ann_smoke.py` remains available for local ANN/e2e preflight checks.
 
 ## Local Validation Commands
 
 ```bash
+# Run from repository root.
+for cmd in cargo git; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "$cmd not found" >&2
+    exit 1
+  fi
+done
+
 PYTHON_BIN="$(command -v python3 || command -v python)"
 if [ -z "$PYTHON_BIN" ]; then
   echo "python3/python not found" >&2
@@ -138,11 +149,21 @@ fi
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 
 # candidate-root and baseline-root must point to different trees.
+CANDIDATE_ROOT="$(pwd -P)"
 BASE_REF="$(git rev-parse HEAD~1)"
 git worktree add ../umap-rs-baseline "$BASE_REF"
-$PYTHON_BIN benchmarks/ci_no_regression.py \
-  --candidate-root "$PWD" \
-  --baseline-root "$(cd ../umap-rs-baseline && pwd)"
+BASELINE_ROOT="$(cd ../umap-rs-baseline && pwd -P)"
+if [ "$CANDIDATE_ROOT" = "$BASELINE_ROOT" ]; then
+  echo "candidate-root and baseline-root must be different directories" >&2
+  exit 1
+fi
+
+for METRIC in euclidean manhattan cosine; do
+  $PYTHON_BIN benchmarks/ci_no_regression.py \
+    --candidate-root "$CANDIDATE_ROOT" \
+    --baseline-root "$BASELINE_ROOT" \
+    --metric "$METRIC"
+done
 git worktree remove ../umap-rs-baseline
 
 $PYTHON_BIN -m pytest -q rust_umap_py/tests/test_binding.py
