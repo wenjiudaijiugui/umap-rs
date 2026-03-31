@@ -1,0 +1,245 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "full",
+  "run_id": "arw2-track2-2026-03-31",
+  "report_phase": "branch",
+  "branch": "arw2/track2-ecosystem-schema",
+  "commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
+  "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+  "reference_manifest": [
+    {
+      "name": "ecosystem-python-binding-report-schema",
+      "repo_url": "https://github.com/lmcinnes/umap",
+      "resolved_ref": "runtime-installed",
+      "resolution_type": "version",
+      "build_options": {
+        "python": "3.12"
+      }
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "breast_cancer",
+      "source_uri": "sklearn.datasets.load_breast_cancer",
+      "version": "scikit-learn bundled",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "full dataset",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "digits",
+      "source_uri": "sklearn.datasets.load_digits",
+      "version": "scikit-learn bundled",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "full dataset",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "synthetic_gate_schema",
+        "name": "synthetic_gate_schema",
+        "n_samples": 128,
+        "n_features": 8,
+        "notes": "schema compatibility sanity"
+      }
+    ],
+    "real": [
+      {
+        "dataset_id": "breast_cancer",
+        "name": "breast_cancer",
+        "n_samples": 569,
+        "n_features": 30,
+        "notes": "real consistency set"
+      }
+    ],
+    "stress": [
+      {
+        "dataset_id": "digits",
+        "name": "digits",
+        "n_samples": 1797,
+        "n_features": 64,
+        "notes": "moderate stress for gate outputs"
+      }
+    ],
+    "coverage_exceptions": []
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": "legacy and new report schema are comparable after alias normalization"
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "python3",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "1"
+      },
+      "dependencies": {
+        "python": "3.12"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 42,
+      "trial_seeds": [
+        42
+      ]
+    },
+    "exact_commands": [
+      "python3 benchmarks/ci_ecosystem_python_binding_gate.py --report-json benchmarks/report_ecosystem_python_binding.json",
+      "python3 -m py_compile benchmarks/ci_ecosystem_python_binding_gate.py"
+    ],
+    "raw_artifact_refs": [
+      "benchmarks/report_ecosystem_python_binding.json"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "consistency": {
+          "pass": true,
+          "details": "schema alias normalization works on legacy report"
+        },
+        "fairness": {
+          "pass": true,
+          "details": "gate semantics unchanged after normalization"
+        },
+        "reference_integrity": {
+          "pass": true,
+          "details": "strict/new and legacy groups both validated"
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "py_compile and gate execution completed"
+        }
+      }
+    },
+    "performance": {
+      "pass": false,
+      "soft": true,
+      "metrics": [
+        {
+          "metric_id": "public_consistency_gate",
+          "category": "public_consistency",
+          "pass": true,
+          "metric_name": "trust_gap_abs_vs_threshold",
+          "unit": "delta",
+          "value": 0.0057,
+          "target_max": 0.03,
+          "baseline_ref": "python_umap_learn",
+          "trial_count": 2,
+          "per_trial": [
+            0.0043,
+            0.0056
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "algo_exact_shared_knn",
+          "raw_artifact_refs": [
+            "benchmarks/report_ecosystem_python_binding.json"
+          ]
+        },
+        {
+          "metric_id": "speed_ratio_gate",
+          "category": "speed",
+          "pass": false,
+          "metric_name": "rust_over_python_fit_ratio",
+          "unit": "ratio",
+          "value": 5.1238,
+          "target_max": 1.35,
+          "baseline_ref": "python_umap_learn",
+          "trial_count": 2,
+          "per_trial": [
+            5.1238,
+            3.1434
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "algo_exact_shared_knn",
+          "timing_boundary": "fit_mean_sec",
+          "raw_artifact_refs": [
+            "benchmarks/report_ecosystem_python_binding.json"
+          ]
+        }
+      ],
+      "explanation_required": true,
+      "explanation": {
+        "root_cause": "Legacy report payload reflects slower rust_umap_py timings relative to threshold; this track only fixes schema compatibility.",
+        "impact_scope": "Performance gate only",
+        "merge_rationale": "Reliability and schema integrity are the target of this branch; performance threshold remains independently enforced.",
+        "follow_up_plan": "Address performance in dedicated optimization tracks.",
+        "owner": "track2-owner",
+        "target_milestone": "next wave",
+        "accepted_by": "track2-reviewer",
+        "acceptance_criteria": "Schema compatibility fixed and reliability gate remains strict.",
+        "raw_artifact_refs": [
+          "benchmarks/report_ecosystem_python_binding.json"
+        ]
+      }
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "track2-reviewer",
+      "implementation_owner": "track2-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Normalization logic is minimal and backward-compatible; reliability semantics preserved.",
+      "reviewed_commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "No benchmark boundary distortions introduced."
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    },
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "gpt-5.3-codex-xhigh-independent-track2-ecosystem-schema",
+      "implementation_owner": "track2-owner",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Independent review confirmed legacy group alias support is backward-compatible and preserves strict reliability semantics.",
+      "reviewed_commit": "d3be69187cb01c18f9d319c00fee6720a6c261f8",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "Alias normalization does not change metric formulas, seeds, thread env, or threshold semantics in strict checks."
+      },
+      "findings": [
+        {
+          "severity": "low",
+          "title": "Legacy mixed-group alias mode does not enforce knn strategy disclosure tags",
+          "risk": "When gating legacy reports, strategy equivalence metadata may be absent, reducing explicit fairness provenance in summaries.",
+          "recommendation": "Treat legacy alias mode as transitional and regenerate reports with canonical group keys plus explicit knn_strategy.equivalence fields.",
+          "evidence_refs": [
+            "benchmarks/ci_ecosystem_python_binding_gate.py:173",
+            "benchmarks/ci_ecosystem_python_binding_gate.py:186"
+          ]
+        }
+      ],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}
