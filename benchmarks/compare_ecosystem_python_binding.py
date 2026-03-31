@@ -3,12 +3,13 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.spatial import procrustes
@@ -56,6 +57,8 @@ THREAD_ENV = {
     "NUMEXPR_NUM_THREADS": "1",
     "PYTHONHASHSEED": "0",
 }
+
+_GNU_TIME_BIN_CACHE: Optional[str] = None
 
 
 @dataclass
@@ -106,8 +109,97 @@ def parse_max_rss_mb(time_file: Path) -> float:
     return float(m.group(1)) / 1024.0
 
 
+def _unique_non_empty(items: List[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for item in items:
+        value = item.strip()
+        if not value or value in seen:
+            continue
+        out.append(value)
+        seen.add(value)
+    return out
+
+
+def _time_candidates() -> List[str]:
+    override = os.environ.get("UMAP_BENCH_TIME_BIN", "").strip()
+    candidates: List[str] = []
+    if override:
+        candidates.append(override)
+
+    for exe in ["gtime", "time"]:
+        resolved = shutil.which(exe)
+        if resolved:
+            candidates.append(resolved)
+
+    candidates.extend(["/usr/bin/time", "gtime", "time"])
+    return _unique_non_empty(candidates)
+
+
+def _probe_gnu_time(candidate: str) -> Tuple[bool, str]:
+    cmd = [candidate, "-v", "true"]
+    try:
+        proc = subprocess.run(
+            cmd,
+            check=False,
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+    except FileNotFoundError:
+        return False, "not found"
+    except PermissionError:
+        return False, "not executable"
+    except OSError as exc:
+        return False, f"probe failed: {exc}"
+
+    out = f"{proc.stdout}\n{proc.stderr}"
+    if "Maximum resident set size" in out:
+        return True, "ok"
+
+    version_hint = ""
+    try:
+        ver = subprocess.run(
+            [candidate, "--version"],
+            check=False,
+            capture_output=True,
+            text=True,
+            env=os.environ.copy(),
+        )
+        ver_out = f"{ver.stdout}\n{ver.stderr}"
+        first_line = next((line.strip() for line in ver_out.splitlines() if line.strip()), "")
+        if first_line:
+            version_hint = f" (version: {first_line[:80]})"
+    except OSError:
+        pass
+
+    return False, f"missing GNU max RSS field in '-v' output{version_hint}"
+
+
+def resolve_time_bin() -> str:
+    global _GNU_TIME_BIN_CACHE
+    if _GNU_TIME_BIN_CACHE:
+        return _GNU_TIME_BIN_CACHE
+
+    attempted: List[str] = []
+    for candidate in _time_candidates():
+        ok, reason = _probe_gnu_time(candidate)
+        attempted.append(f"{candidate}: {reason}")
+        if ok:
+            _GNU_TIME_BIN_CACHE = candidate
+            return candidate
+
+    attempted_str = "; ".join(attempted) if attempted else "none"
+    raise RuntimeError(
+        "Unable to find GNU time with '-v' max RSS reporting. "
+        f"Tried: {attempted_str}. "
+        "Set UMAP_BENCH_TIME_BIN to a GNU time executable path. "
+        "Install hint: Debian/Ubuntu `apt-get install time`; macOS `brew install gnu-time`."
+    )
+
+
 def run_timed(cmd: List[str], time_file: Path) -> TimedRun:
-    wrapped = ["/usr/bin/time", "-v", "-o", str(time_file)] + cmd
+    wrapped = [resolve_time_bin(), "-v", "-o", str(time_file)] + cmd
     env = os.environ.copy()
     env.update(THREAD_ENV)
 
