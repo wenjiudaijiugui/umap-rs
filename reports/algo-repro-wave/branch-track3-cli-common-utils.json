@@ -1,0 +1,184 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "full",
+  "run_id": "arw2-track3-2026-03-31",
+  "report_phase": "branch",
+  "branch": "arw2/track3-cli-common",
+  "commit": "pending-track3",
+  "baseline_commit": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+  "reference_manifest": [
+    {
+      "name": "rust_umap_cli_behavior",
+      "repo_url": "local://rust_umap/src/bin",
+      "resolved_ref": "b023fede8f8a996d0ec971f1dbed4c034dbe2c17",
+      "resolution_type": "commit"
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "synthetic_internal",
+      "source_uri": "generated://synthetic_data",
+      "version": "v1",
+      "checksum": "generated-in-test",
+      "checksum_type": "other",
+      "split_policy": "fixed-seed deterministic",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "breast_cancer",
+      "source_uri": "sklearn.datasets.load_breast_cancer",
+      "version": "sklearn bundled",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "full dataset",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    },
+    {
+      "dataset_id": "california_housing",
+      "source_uri": "sklearn.datasets.fetch_california_housing",
+      "version": "sklearn fetched",
+      "checksum": "runtime-derived",
+      "checksum_type": "other",
+      "split_policy": "sample capped",
+      "acquired_at_utc": "2026-03-31T00:00:00Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "synthetic_internal",
+        "name": "unit_smoke",
+        "n_samples": 64,
+        "n_features": 8,
+        "notes": "CLI argument parsing and IO behavior"
+      }
+    ],
+    "real": [
+      {
+        "dataset_id": "breast_cancer",
+        "name": "breast_cancer",
+        "n_samples": 569,
+        "n_features": 30,
+        "notes": "real benchmark lineage"
+      }
+    ],
+    "stress": [
+      {
+        "dataset_id": "california_housing",
+        "name": "california_housing",
+        "n_samples": 15000,
+        "n_features": 8,
+        "notes": "stress lineage"
+      }
+    ],
+    "coverage_exceptions": []
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": "CLI behavior preserved while deduplicating helpers"
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "cargo",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1"
+      },
+      "dependencies": {
+        "rust": "cargo"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 42,
+      "trial_seeds": [42, 43, 44]
+    },
+    "exact_commands": [
+      "cargo test --manifest-path rust_umap/Cargo.toml",
+      "cargo build --release --manifest-path rust_umap/Cargo.toml --bin fit_csv --bin bench_fit_csv"
+    ],
+    "raw_artifact_refs": [
+      "rust_umap/src/bin/common_cli.rs",
+      "rust_umap/src/bin/fit_csv.rs",
+      "rust_umap/src/bin/bench_fit_csv.rs"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "consistency": {
+          "pass": true,
+          "details": "CLI behavior kept consistent; tests pass"
+        },
+        "fairness": {
+          "pass": true,
+          "details": "benchmark parameter parsing remains unchanged"
+        },
+        "reference_integrity": {
+          "pass": true,
+          "details": "source behavior preserved from baseline"
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "cargo test and release bin build pass"
+        }
+      }
+    },
+    "performance": {
+      "pass": true,
+      "soft": true,
+      "metrics": [
+        {
+          "metric_id": "public_consistency_placeholder",
+          "category": "public_consistency",
+          "pass": true,
+          "metric_name": "cli_parity_public_consistency_placeholder",
+          "unit": "pass_fail",
+          "value": 1.0,
+          "target_max": 1.0,
+          "baseline_ref": "baseline_cli_behavior",
+          "trial_count": 1,
+          "per_trial": [1.0],
+          "aggregate_method": "mean",
+          "measurement_scope": "build+unit-level parity",
+          "raw_artifact_refs": [
+            "rust_umap/src/bin/common_cli.rs"
+          ]
+        }
+      ],
+      "explanation_required": false
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "wave1",
+      "reviewer_id": "reviewer-track3-independent",
+      "implementation_owner": "impl-track3",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Shared helper refactor is scoped and validated by tests/build.",
+      "reviewed_commit": "pending-track3",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "references/fairness-checklist.md",
+        "notes": "No fairness-affecting benchmark parameter logic changed"
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}
