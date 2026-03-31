@@ -24,6 +24,35 @@ THREAD_ENV = {
 }
 
 
+def resolve_time_bin() -> str:
+    override = os.environ.get("UMAP_BENCH_TIME_BIN", "").strip()
+    candidates: List[str] = []
+    if override:
+        candidates.append(override)
+    candidates.extend(["/usr/bin/time", "gtime", "time"])
+
+    for candidate in candidates:
+        cmd = [candidate, "-v", "true"]
+        try:
+            proc = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=os.environ.copy(),
+            )
+        except FileNotFoundError:
+            continue
+        out = f"{proc.stdout}\n{proc.stderr}"
+        if "Maximum resident set size" in out:
+            return candidate
+
+    raise RuntimeError(
+        "No suitable GNU time binary found. Set UMAP_BENCH_TIME_BIN to a GNU time executable "
+        "that supports '-v' and reports 'Maximum resident set size'."
+    )
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description=(
@@ -88,8 +117,9 @@ def run_bench(
     seed: int,
     metric: str,
 ) -> Dict[str, float]:
+    time_bin = resolve_time_bin()
     cmd = [
-        "/usr/bin/time",
+        time_bin,
         "-v",
         "-o",
         str(time_path),

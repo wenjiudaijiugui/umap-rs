@@ -106,8 +106,37 @@ def parse_max_rss_mb(time_file: Path) -> float:
     return float(m.group(1)) / 1024.0
 
 
+def resolve_time_bin() -> str:
+    override = os.environ.get("UMAP_BENCH_TIME_BIN", "").strip()
+    candidates: List[str] = []
+    if override:
+        candidates.append(override)
+    candidates.extend(["/usr/bin/time", "gtime", "time"])
+
+    for candidate in candidates:
+        cmd = [candidate, "-v", "true"]
+        try:
+            proc = subprocess.run(
+                cmd,
+                check=False,
+                capture_output=True,
+                text=True,
+                env=os.environ.copy(),
+            )
+        except FileNotFoundError:
+            continue
+        out = f"{proc.stdout}\n{proc.stderr}"
+        if "Maximum resident set size" in out:
+            return candidate
+
+    raise RuntimeError(
+        "No suitable GNU time binary found. Set UMAP_BENCH_TIME_BIN to a GNU time executable "
+        "that supports '-v' and reports 'Maximum resident set size'."
+    )
+
+
 def run_timed(cmd: List[str], time_file: Path) -> TimedRun:
-    wrapped = ["/usr/bin/time", "-v", "-o", str(time_file)] + cmd
+    wrapped = [resolve_time_bin(), "-v", "-o", str(time_file)] + cmd
     env = os.environ.copy()
     env.update(THREAD_ENV)
 
