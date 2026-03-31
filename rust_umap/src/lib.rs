@@ -7,6 +7,9 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 
+pub mod aligned;
+pub use aligned::{AlignedUmapError, AlignedUmapModel, AlignedUmapParams, AlignmentRelation};
+
 const SMOOTH_K_TOLERANCE: f32 = 1e-5;
 const MIN_K_DIST_SCALE: f32 = 1e-3;
 const DEFAULT_BANDWIDTH: f32 = 1.0;
