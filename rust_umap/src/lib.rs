@@ -1522,7 +1522,8 @@ fn smooth_knn_dist(
         let mut total = 0.0_f32;
         let mut count = 0_usize;
         for row in distances {
-            for &d in row {
+            let start = usize::from(distances_include_self && !row.is_empty());
+            for &d in row.iter().skip(start) {
                 total += d;
                 count += 1;
             }
@@ -1535,8 +1536,14 @@ fn smooth_knn_dist(
 
     for i in 0..n_samples {
         let ith_distances = &distances[i];
+        let neighbor_start = usize::from(distances_include_self && !ith_distances.is_empty());
+        let active_distances = &ith_distances[neighbor_start..];
 
-        let non_zero_dists: Vec<f32> = ith_distances.iter().copied().filter(|d| *d > 0.0).collect();
+        let non_zero_dists: Vec<f32> = active_distances
+            .iter()
+            .copied()
+            .filter(|d| *d > 0.0)
+            .collect();
 
         if non_zero_dists.len() as f32 >= local_connectivity {
             let index = local_connectivity.floor() as usize;
@@ -1561,23 +1568,12 @@ fn smooth_knn_dist(
         for _ in 0..64 {
             let mut psum = 0.0_f32;
 
-            if distances_include_self {
-                for &dist in ith_distances.iter().skip(1) {
-                    let d = dist - rhos[i];
-                    if d > 0.0 {
-                        psum += (-(d / mid)).exp();
-                    } else {
-                        psum += 1.0;
-                    }
-                }
-            } else {
-                for &dist in ith_distances {
-                    let d = dist - rhos[i];
-                    if d > 0.0 {
-                        psum += (-(d / mid)).exp();
-                    } else {
-                        psum += 1.0;
-                    }
+            for &dist in active_distances {
+                let d = dist - rhos[i];
+                if d > 0.0 {
+                    psum += (-(d / mid)).exp();
+                } else {
+                    psum += 1.0;
                 }
             }
 
@@ -1598,7 +1594,11 @@ fn smooth_knn_dist(
             }
         }
 
-        let mean_ith = ith_distances.iter().sum::<f32>() / ith_distances.len() as f32;
+        let mean_ith = if active_distances.is_empty() {
+            0.0
+        } else {
+            active_distances.iter().sum::<f32>() / active_distances.len() as f32
+        };
         let min_scale = if rhos[i] > 0.0 {
             MIN_K_DIST_SCALE * mean_ith
         } else {
@@ -3460,10 +3460,35 @@ mod tests {
     }
 
     #[test]
+    fn smooth_knn_dist_with_zero_rows_matches_self_and_non_self_layouts() {
+        let dists_with_self = vec![vec![0.0, 0.0, 0.0, 0.0], vec![0.0, 1.0, 2.0, 3.0]];
+        let dists_without_self = vec![vec![0.0, 0.0, 0.0], vec![1.0, 2.0, 3.0]];
+
+        let (sigmas_self, rhos_self) =
+            smooth_knn_dist(&dists_with_self, 3.0, 1.0, DEFAULT_BANDWIDTH, true);
+        let (sigmas_no_self, rhos_no_self) =
+            smooth_knn_dist(&dists_without_self, 3.0, 1.0, DEFAULT_BANDWIDTH, false);
+
+        for (&lhs, &rhs) in sigmas_self.iter().zip(sigmas_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-6,
+                "sigma mismatch for self/non-self rows with zero row: {lhs} vs {rhs}"
+            );
+        }
+        for (&lhs, &rhs) in rhos_self.iter().zip(rhos_no_self.iter()) {
+            assert!(
+                (lhs - rhs).abs() <= 1e-6,
+                "rho mismatch for self/non-self rows with zero row: {lhs} vs {rhs}"
+            );
+        }
+    }
+
+    #[test]
     fn inverse_neighbor_count_respects_model_n_neighbors() {
         assert_eq!(inverse_neighbor_count(3, 100), 3);
         assert_eq!(inverse_neighbor_count(15, 7), 7);
         assert_eq!(inverse_neighbor_count(2, 2), 2);
+        assert_eq!(inverse_neighbor_count(4, 1), 1);
     }
 
     #[test]
