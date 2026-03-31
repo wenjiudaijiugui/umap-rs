@@ -9,7 +9,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from sklearn.datasets import load_breast_cancer, load_digits, load_iris
@@ -34,12 +34,38 @@ THREAD_ENV = {
     "PYTHONHASHSEED": "0",
 }
 
+SHARED_UMAP_BASE_PARAMS = {
+    "n_components": 2,
+    "metric": "euclidean",
+    "learning_rate": 1.0,
+    "min_dist": 0.1,
+    "spread": 1.0,
+    "local_connectivity": 1.0,
+    "set_op_mix_ratio": 1.0,
+    "repulsion_strength": 1.0,
+    "negative_sample_rate": 5,
+    "init": "spectral",
+    "low_memory": True,
+    "force_approximation_algorithm": False,
+    "n_jobs": 1,
+}
+
+FALLBACK_MLP_PARAMS = {
+    "activation": "tanh",
+    "solver": "adam",
+    "alpha": 1e-4,
+    "learning_rate_init": 0.01,
+    "shuffle": True,
+    "tol": 1e-5,
+    "n_iter_no_change": 20,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Evaluate Parametric UMAP MVP consistency/speed/memory against Python "
-            "umap-learn ParametricUMAP (with automatic fallback proxy)."
+            "umap-learn ParametricUMAP with explicit strict/fallback policy."
         )
     )
     parser.add_argument(
@@ -56,6 +82,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--umap-epochs", type=int, default=200)
     parser.add_argument("--metric-k", type=int, default=10)
     parser.add_argument("--consistency-tol", type=float, default=0.01)
+    parser.add_argument(
+        "--python-ref-policy",
+        choices=["strict", "fallback_aux"],
+        default="strict",
+        help=(
+            "strict: require umap.parametric_umap.ParametricUMAP as Python reference; "
+            "fallback_aux: allow fallback proxy for auxiliary-only diagnostics"
+        ),
+    )
+    parser.add_argument(
+        "--enforce-hard-gate",
+        dest="enforce_hard_gate",
+        action="store_true",
+        default=True,
+        help="exit non-zero if any dataset fails hard gates (default: enabled)",
+    )
+    parser.add_argument(
+        "--no-enforce-hard-gate",
+        dest="enforce_hard_gate",
+        action="store_false",
+        help="do not exit non-zero even when hard gate fails",
+    )
     parser.add_argument("--output-json", default="", help="optional path to persist report JSON")
 
     # Worker mode for isolated Python RSS measurement.
@@ -80,8 +128,7 @@ def load_dataset(name: str) -> Tuple[np.ndarray, Optional[np.ndarray]]:
     else:
         raise ValueError(name)
 
-    x = StandardScaler().fit_transform(x).astype(np.float32)
-    return x, y
+    return np.asarray(x, dtype=np.float32), y
 
 
 def parse_json_payload(stdout: str) -> Dict[str, object]:
@@ -119,6 +166,66 @@ def rmse(a: np.ndarray, b: np.ndarray) -> float:
 
 def mae(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.mean(np.abs(a - b)))
+
+
+def aligned_umap_kwargs(n_neighbors: int, umap_epochs: int, seed: int) -> Dict[str, object]:
+    kwargs = dict(SHARED_UMAP_BASE_PARAMS)
+    kwargs.update(
+        {
+            "n_neighbors": n_neighbors,
+            "n_epochs": umap_epochs,
+            "random_state": seed,
+            "transform_seed": seed,
+        }
+    )
+    return kwargs
+
+
+def parameter_alignment_report(args: argparse.Namespace) -> Dict[str, object]:
+    return {
+        "shared_umap_hyperparams": aligned_umap_kwargs(
+            n_neighbors=args.n_neighbors,
+            umap_epochs=args.umap_epochs,
+            seed=args.seed,
+        ),
+        "rust_parametric_network_hyperparams": {
+            "hidden_dim": args.hidden_dim,
+            "train_epochs": args.train_epochs,
+            "batch_size": args.batch_size,
+            "inference_batch_size": max(args.batch_size, 256),
+            "learning_rate": FALLBACK_MLP_PARAMS["learning_rate_init"],
+            "weight_decay": FALLBACK_MLP_PARAMS["alpha"],
+            "standardize_input": False,
+            "seed": args.seed,
+        },
+        "python_parametric_hyperparams": {
+            "batch_size": args.batch_size,
+            "tensorflow_seed": args.seed,
+        },
+        "python_fallback_proxy_hyperparams": {
+            "mlp_hidden_layer_sizes": [args.hidden_dim],
+            "mlp_max_iter": args.train_epochs,
+            "mlp_batch_size": args.batch_size,
+            **FALLBACK_MLP_PARAMS,
+        },
+        "notes": [
+            "Primary Rust-vs-Python hard gate accepts only backend=umap_learn_parametric.",
+            "Fallback backends are auxiliary diagnostics and never used in the primary hard gate.",
+            "StandardScaler is fit on train split only, then reused for train/query transform.",
+            "ParametricUMAP does not expose a direct one-to-one hidden_dim control in this harness.",
+        ],
+    }
+
+
+def build_gate(status: str, reason: str, **details: object) -> Dict[str, object]:
+    gate = {"status": status, "reason": reason}
+    if details:
+        gate["details"] = details
+    return gate
+
+
+def gate_status_from_bool(passed: bool, pass_reason: str, fail_reason: str, **details: object) -> Dict[str, object]:
+    return build_gate("pass" if passed else "fail", pass_reason if passed else fail_reason, **details)
 
 
 def knn_overlap(high: np.ndarray, low: np.ndarray, k: int) -> float:
@@ -219,7 +326,7 @@ def run_python_worker(
     train: np.ndarray,
     query: np.ndarray,
     args: argparse.Namespace,
-) -> Tuple[Dict[str, object], np.ndarray, np.ndarray]:
+) -> Tuple[Dict[str, object], Optional[np.ndarray], Optional[np.ndarray]]:
     with tempfile.TemporaryDirectory(prefix="parametric-python-ref-") as tmpdir:
         tmp = Path(tmpdir)
         train_csv = tmp / "train.csv"
@@ -260,6 +367,8 @@ def run_python_worker(
             str(args.n_neighbors),
             "--umap-epochs",
             str(args.umap_epochs),
+            "--python-ref-policy",
+            str(args.python_ref_policy),
         ]
 
         env = os.environ.copy()
@@ -267,7 +376,10 @@ def run_python_worker(
         stdout = subprocess.check_output(cmd, text=True, env=env)
         payload = parse_json_payload(stdout)
         payload["process_max_rss_mb"] = parse_max_rss_mb(time_txt.read_text(encoding="utf-8"))
-        return payload, read_csv(train_out_csv), read_csv(query_out_csv)
+
+        train_embedding = read_csv(train_out_csv) if payload.get("has_train_embedding") else None
+        query_embedding = read_csv(query_out_csv) if payload.get("has_query_embedding") else None
+        return payload, train_embedding, query_embedding
 
 
 def run_python_reference_impl(
@@ -279,14 +391,25 @@ def run_python_reference_impl(
     batch_size: int,
     n_neighbors: int,
     umap_epochs: int,
-) -> Tuple[Dict[str, object], np.ndarray, np.ndarray]:
+    python_ref_policy: str,
+) -> Tuple[Dict[str, object], Optional[np.ndarray], Optional[np.ndarray]]:
     np.random.seed(seed)
     random.seed(seed)
 
-    backend = "umap_learn_parametric"
+    umap_kwargs = aligned_umap_kwargs(
+        n_neighbors=n_neighbors,
+        umap_epochs=umap_epochs,
+        seed=seed,
+    )
+
+    backend = "unavailable"
+    status = "reference_unavailable"
     fallback_reason = ""
     train_embedding: Optional[np.ndarray] = None
     query_embedding: Optional[np.ndarray] = None
+    used_fallback = False
+    primary_reference_available = False
+    comparable_for_primary_gate = False
 
     fit_time_sec = 0.0
     transform_query_time_sec = 0.0
@@ -301,14 +424,9 @@ def run_python_reference_impl(
         tf.random.set_seed(seed)
 
         model = ParametricUMAP(
-            n_neighbors=n_neighbors,
-            n_components=2,
-            metric="euclidean",
-            n_epochs=umap_epochs,
             batch_size=batch_size,
-            random_state=seed,
-            transform_seed=seed,
             verbose=False,
+            **umap_kwargs,
         )
 
         t0 = time.perf_counter()
@@ -322,49 +440,50 @@ def run_python_reference_impl(
         train_pred = model.transform(train).astype(np.float32)
         train_alignment_rmse = rmse(train_pred, train_embedding)
         train_alignment_mae = mae(train_pred, train_embedding)
+        status = "ok"
+        backend = "umap_learn_parametric"
+        primary_reference_available = True
+        comparable_for_primary_gate = True
     except Exception as exc:
         fallback_reason = f"{type(exc).__name__}: {exc}"
+        if python_ref_policy == "strict":
+            payload = {
+                "status": status,
+                "backend": backend,
+                "python_ref_policy": python_ref_policy,
+                "reference_tier": "missing",
+                "primary_reference_available": primary_reference_available,
+                "comparable_for_primary_gate": comparable_for_primary_gate,
+                "used_fallback": used_fallback,
+                "fallback_reason": fallback_reason,
+                "fit_time_sec": float(fit_time_sec),
+                "transform_query_time_sec": float(transform_query_time_sec),
+                "train_alignment_rmse": float(train_alignment_rmse),
+                "train_alignment_mae": float(train_alignment_mae),
+                "has_train_embedding": False,
+                "has_query_embedding": False,
+                "n_train": int(train.shape[0]),
+                "n_query": int(query.shape[0]),
+            }
+            return payload, None, None
 
+        used_fallback = True
         try:
             import umap
             from sklearn.neural_network import MLPRegressor
 
             backend = "proxy_umap_plus_mlp"
+            status = "auxiliary_fallback"
 
             t0 = time.perf_counter()
-            teacher = umap.UMAP(
-                n_neighbors=n_neighbors,
-                n_components=2,
-                metric="euclidean",
-                n_epochs=umap_epochs,
-                learning_rate=1.0,
-                min_dist=0.1,
-                spread=1.0,
-                local_connectivity=1.0,
-                set_op_mix_ratio=1.0,
-                repulsion_strength=1.0,
-                negative_sample_rate=5,
-                random_state=seed,
-                transform_seed=seed,
-                low_memory=True,
-                force_approximation_algorithm=False,
-                n_jobs=1,
-                init="spectral",
-                verbose=False,
-            ).fit_transform(train)
+            teacher = umap.UMAP(verbose=False, **umap_kwargs).fit_transform(train)
 
             reg = MLPRegressor(
                 hidden_layer_sizes=(hidden_dim,),
-                activation="tanh",
-                solver="adam",
-                alpha=1e-4,
                 batch_size=batch_size,
-                learning_rate_init=0.01,
                 max_iter=train_epochs,
                 random_state=seed,
-                shuffle=True,
-                tol=1e-5,
-                n_iter_no_change=20,
+                **FALLBACK_MLP_PARAMS,
             )
             reg.fit(train, teacher)
             train_embedding = reg.predict(train).astype(np.float32)
@@ -381,22 +500,17 @@ def run_python_reference_impl(
             from sklearn.neural_network import MLPRegressor
 
             backend = "proxy_pca_plus_mlp"
+            status = "auxiliary_fallback"
             fallback_reason = f"{fallback_reason} | proxy_umap_failed: {type(proxy_exc).__name__}: {proxy_exc}"
 
             t0 = time.perf_counter()
             teacher = PCA(n_components=2, random_state=seed).fit_transform(train).astype(np.float32)
             reg = MLPRegressor(
                 hidden_layer_sizes=(hidden_dim,),
-                activation="tanh",
-                solver="adam",
-                alpha=1e-4,
                 batch_size=batch_size,
-                learning_rate_init=0.01,
                 max_iter=train_epochs,
                 random_state=seed,
-                shuffle=True,
-                tol=1e-5,
-                n_iter_no_change=20,
+                **FALLBACK_MLP_PARAMS,
             )
             reg.fit(train, teacher)
             train_embedding = reg.predict(train).astype(np.float32)
@@ -409,16 +523,24 @@ def run_python_reference_impl(
             train_alignment_rmse = rmse(train_embedding, teacher)
             train_alignment_mae = mae(train_embedding, teacher)
 
-    assert train_embedding is not None and query_embedding is not None
+    has_train_embedding = train_embedding is not None
+    has_query_embedding = query_embedding is not None
 
     payload = {
-        "status": "ok",
+        "status": status,
         "backend": backend,
+        "python_ref_policy": python_ref_policy,
+        "reference_tier": "primary" if comparable_for_primary_gate else "auxiliary",
+        "primary_reference_available": primary_reference_available,
+        "comparable_for_primary_gate": comparable_for_primary_gate,
+        "used_fallback": used_fallback,
         "fallback_reason": fallback_reason,
         "fit_time_sec": float(fit_time_sec),
         "transform_query_time_sec": float(transform_query_time_sec),
         "train_alignment_rmse": float(train_alignment_rmse),
         "train_alignment_mae": float(train_alignment_mae),
+        "has_train_embedding": has_train_embedding,
+        "has_query_embedding": has_query_embedding,
         "n_train": int(train.shape[0]),
         "n_query": int(query.shape[0]),
     }
@@ -443,10 +565,19 @@ def worker_python_ref(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
         n_neighbors=args.n_neighbors,
         umap_epochs=args.umap_epochs,
+        python_ref_policy=args.python_ref_policy,
     )
 
-    write_csv(Path(args.train_out_csv), train_embedding)
-    write_csv(Path(args.query_out_csv), query_embedding)
+    if train_embedding is not None:
+        write_csv(Path(args.train_out_csv), train_embedding)
+    else:
+        Path(args.train_out_csv).write_text("", encoding="utf-8")
+
+    if query_embedding is not None:
+        write_csv(Path(args.query_out_csv), query_embedding)
+    else:
+        Path(args.query_out_csv).write_text("", encoding="utf-8")
+
     print(json.dumps(payload))
 
 
@@ -457,12 +588,12 @@ def summarize_dataset(
     rust_opt_payload: Dict[str, object],
     rust_opt_query_emb: np.ndarray,
     py_payload: Dict[str, object],
-    py_query_emb: np.ndarray,
+    py_query_emb: Optional[np.ndarray],
     args: argparse.Namespace,
 ) -> Dict[str, object]:
     quality_naive = quality_metrics(x_query, rust_naive_query_emb, args.metric_k)
     quality_opt = quality_metrics(x_query, rust_opt_query_emb, args.metric_k)
-    quality_py = quality_metrics(x_query, py_query_emb, args.metric_k)
+    quality_py = quality_metrics(x_query, py_query_emb, args.metric_k) if py_query_emb is not None else None
 
     fit_speedup = (
         float(rust_naive_payload["fit_time_sec"]) / float(rust_opt_payload["fit_time_sec"])
@@ -485,21 +616,47 @@ def summarize_dataset(
     )
     rust_vs_python_rss_ratio = rust_opt_rss / py_rss if py_rss > 0.0 else float("inf")
 
+    py_backend = str(py_payload.get("backend", "unavailable"))
+    py_reference_is_primary = bool(py_payload.get("comparable_for_primary_gate", False))
+    py_policy = str(py_payload.get("python_ref_policy", "strict"))
+
+    primary_rmse: Optional[float] = None
+    primary_trust_gap: Optional[float] = None
+    primary_knn_gap: Optional[float] = None
+    auxiliary_reference_review: Optional[Dict[str, object]] = None
+
+    if quality_py is not None:
+        aligned_rmse = orthogonal_aligned_rmse(rust_opt_query_emb, py_query_emb)
+        trust_gap = quality_opt["trustworthiness"] - quality_py["trustworthiness"]
+        knn_gap = quality_opt["knn_overlap"] - quality_py["knn_overlap"]
+        if py_reference_is_primary:
+            primary_rmse = aligned_rmse
+            primary_trust_gap = trust_gap
+            primary_knn_gap = knn_gap
+        else:
+            auxiliary_reference_review = {
+                "note": (
+                    "Auxiliary fallback reference diagnostics only; "
+                    "excluded from primary Rust-vs-Python hard gate."
+                ),
+                "backend": py_backend,
+                "rust_opt_vs_aux_aligned_rmse": aligned_rmse,
+                "rust_opt_minus_aux_trustworthiness": trust_gap,
+                "rust_opt_minus_aux_knn_overlap": knn_gap,
+            }
+
     consistency = {
-        "rust_opt_vs_python_aligned_rmse": orthogonal_aligned_rmse(
-            rust_opt_query_emb, py_query_emb
-        ),
-        "rust_opt_minus_python_trustworthiness": (
-            quality_opt["trustworthiness"] - quality_py["trustworthiness"]
-        ),
-        "rust_opt_minus_python_knn_overlap": (
-            quality_opt["knn_overlap"] - quality_py["knn_overlap"]
-        ),
+        "primary_reference_policy": py_policy,
+        "primary_reference_backend": py_backend,
+        "primary_reference_comparable": py_reference_is_primary,
+        "rust_opt_vs_python_aligned_rmse": primary_rmse,
+        "rust_opt_minus_python_trustworthiness": primary_trust_gap,
+        "rust_opt_minus_python_knn_overlap": primary_knn_gap,
         "bias_control": {
             "seed": args.seed,
             "batch_size": args.batch_size,
             "train_epochs": args.train_epochs,
-            "normalization": "StandardScaler applied before both Rust and Python pipelines",
+            "normalization": "StandardScaler fit on train split only; train/query transformed with same scaler",
             "metric_definitions": {
                 "trustworthiness": f"sklearn.manifold.trustworthiness(k={args.metric_k})",
                 "knn_overlap": f"kNN overlap @k={args.metric_k} on query set",
@@ -508,26 +665,112 @@ def summarize_dataset(
         },
     }
 
-    gates = {
-        "consistency_not_degraded_vs_rust_naive": (
-            quality_opt["trustworthiness"] + args.consistency_tol >= quality_naive["trustworthiness"]
-            and quality_opt["knn_overlap"] + args.consistency_tol >= quality_naive["knn_overlap"]
+    gate_consistency_vs_naive = (
+        quality_opt["trustworthiness"] + args.consistency_tol >= quality_naive["trustworthiness"]
+        and quality_opt["knn_overlap"] + args.consistency_tol >= quality_naive["knn_overlap"]
+    )
+    gate_faster_vs_naive = (
+        float(rust_opt_payload["fit_time_sec"]) <= float(rust_naive_payload["fit_time_sec"])
+        and float(rust_opt_payload["transform_query_time_sec"])
+        <= float(rust_naive_payload["transform_query_time_sec"])
+    )
+    gate_memory_vs_naive = rust_opt_rss <= rust_naive_rss
+
+    gates: Dict[str, Dict[str, object]] = {
+        "consistency_not_degraded_vs_rust_naive": gate_status_from_bool(
+            gate_consistency_vs_naive,
+            "Rust optimized quality stays within tolerance vs Rust naive.",
+            "Rust optimized quality exceeds tolerance drift vs Rust naive.",
+            tolerance=args.consistency_tol,
+            rust_opt_quality=quality_opt,
+            rust_naive_quality=quality_naive,
         ),
-        "rust_optimized_faster_than_naive": (
-            float(rust_opt_payload["fit_time_sec"]) <= float(rust_naive_payload["fit_time_sec"])
-            and float(rust_opt_payload["transform_query_time_sec"])
-            <= float(rust_naive_payload["transform_query_time_sec"])
+        "rust_optimized_faster_than_naive": gate_status_from_bool(
+            gate_faster_vs_naive,
+            "Rust optimized is faster or equal on fit+query transform vs Rust naive.",
+            "Rust optimized is slower than Rust naive on fit or query transform.",
+            rust_opt_fit_sec=float(rust_opt_payload["fit_time_sec"]),
+            rust_naive_fit_sec=float(rust_naive_payload["fit_time_sec"]),
+            rust_opt_transform_sec=float(rust_opt_payload["transform_query_time_sec"]),
+            rust_naive_transform_sec=float(rust_naive_payload["transform_query_time_sec"]),
         ),
-        "rust_optimized_lower_or_equal_memory_than_naive": rust_opt_rss <= rust_naive_rss,
+        "rust_optimized_lower_or_equal_memory_than_naive": gate_status_from_bool(
+            gate_memory_vs_naive,
+            "Rust optimized uses lower or equal RSS vs Rust naive.",
+            "Rust optimized uses higher RSS than Rust naive.",
+            rust_opt_rss_mb=rust_opt_rss,
+            rust_naive_rss_mb=rust_naive_rss,
+        ),
     }
 
-    risks = []
-    if py_payload.get("backend") != "umap_learn_parametric":
-        risks.append(
-            "Python side used fallback proxy; absolute parity with tensorflow-backed ParametricUMAP is limited."
+    if py_reference_is_primary and quality_py is not None:
+        gate_rust_vs_python_quality = (
+            quality_opt["trustworthiness"] + args.consistency_tol >= quality_py["trustworthiness"]
+            and quality_opt["knn_overlap"] + args.consistency_tol >= quality_py["knn_overlap"]
         )
-    if not gates["consistency_not_degraded_vs_rust_naive"]:
-        risks.append("Rust optimized mode changed quality metrics beyond tolerance vs Rust naive mode.")
+        gates["python_reference_is_parametric_primary"] = build_gate(
+            "pass",
+            "Python reference uses umap.parametric_umap.ParametricUMAP.",
+            backend=py_backend,
+            policy=py_policy,
+        )
+        gates["rust_optimized_not_degraded_vs_python_primary"] = gate_status_from_bool(
+            gate_rust_vs_python_quality,
+            "Rust optimized quality stays within tolerance vs Python ParametricUMAP primary reference.",
+            "Rust optimized quality exceeds tolerance vs Python ParametricUMAP primary reference.",
+            tolerance=args.consistency_tol,
+            rust_opt_quality=quality_opt,
+            python_primary_quality=quality_py,
+        )
+        gates["rust_vs_python_hard_gate"] = gate_status_from_bool(
+            gate_rust_vs_python_quality,
+            "Rust-vs-Python hard gate passed.",
+            "Rust-vs-Python hard gate failed on quality deltas.",
+            backend=py_backend,
+            policy=py_policy,
+        )
+    else:
+        unavailable_reason = (
+            "Python primary reference unavailable: "
+            f"status={py_payload.get('status')}, backend={py_backend}, policy={py_policy}."
+        )
+        gates["python_reference_is_parametric_primary"] = build_gate(
+            "fail",
+            unavailable_reason,
+        )
+        gates["rust_optimized_not_degraded_vs_python_primary"] = build_gate(
+            "skipped",
+            "Skipped because Python primary reference gate failed.",
+        )
+        gates["rust_vs_python_hard_gate"] = build_gate(
+            "fail",
+            "Rust-vs-Python hard gate failed because Python primary reference is unavailable.",
+            unavailable_reason=unavailable_reason,
+        )
+
+    hard_gate_keys = [
+        "python_reference_is_parametric_primary",
+        "rust_vs_python_hard_gate",
+    ]
+    failed_hard_gates = [name for name in hard_gate_keys if gates[name]["status"] == "fail"]
+    failed_all_gates = [name for name, gate in gates.items() if gate["status"] == "fail"]
+    skipped_gates = [name for name, gate in gates.items() if gate["status"] == "skipped"]
+
+    risks: List[str] = []
+    if not py_reference_is_primary:
+        risks.append(
+            "Python side is not a primary ParametricUMAP reference; Rust-vs-Python hard gate cannot be considered passed."
+        )
+    if not gate_consistency_vs_naive:
+        risks.append(
+            "Rust optimized mode changed quality metrics beyond tolerance vs Rust naive mode."
+        )
+    if failed_hard_gates:
+        risks.append(f"Hard gate failed: {', '.join(failed_hard_gates)}")
+
+    python_quality_section: Dict[str, object] = {"run": py_payload, "quality_query": quality_py}
+    if auxiliary_reference_review is not None:
+        python_quality_section["auxiliary_reference_review"] = auxiliary_reference_review
 
     return {
         "rust": {
@@ -538,10 +781,7 @@ def summarize_dataset(
                 "optimized": quality_opt,
             },
         },
-        "python_reference": {
-            "run": py_payload,
-            "quality_query": quality_py,
-        },
+        "python_reference": python_quality_section,
         "consistency_review": consistency,
         "speed_review": {
             "fit_speedup_optimized_vs_naive": fit_speedup,
@@ -566,6 +806,13 @@ def summarize_dataset(
             "rust_optimized_vs_python_rss_ratio": rust_vs_python_rss_ratio,
         },
         "gates": gates,
+        "gate_summary": {
+            "overall_status": "pass" if not failed_all_gates else "fail",
+            "hard_gate_status": "pass" if not failed_hard_gates else "fail",
+            "failed_gates": failed_all_gates,
+            "failed_hard_gates": failed_hard_gates,
+            "skipped_gates": skipped_gates,
+        },
         "risks": risks,
     }
 
@@ -588,7 +835,10 @@ def orchestrate(args: argparse.Namespace) -> Dict[str, object]:
             "n_neighbors": args.n_neighbors,
             "umap_epochs": args.umap_epochs,
             "metric_k": args.metric_k,
+            "python_ref_policy": args.python_ref_policy,
+            "enforce_hard_gate": args.enforce_hard_gate,
             "thread_env": THREAD_ENV,
+            "parameter_alignment": parameter_alignment_report(args),
         },
         "datasets": {},
     }
@@ -597,14 +847,15 @@ def orchestrate(args: argparse.Namespace) -> Dict[str, object]:
         x, y = load_dataset(name)
         stratify = y if y is not None and len(np.unique(y)) > 1 else None
 
-        x_train, x_query = train_test_split(
+        x_train_raw, x_query_raw = train_test_split(
             x,
             test_size=args.test_size,
             random_state=args.seed,
             stratify=stratify,
         )
-        x_train = np.asarray(x_train, dtype=np.float32)
-        x_query = np.asarray(x_query, dtype=np.float32)
+        scaler = StandardScaler().fit(x_train_raw)
+        x_train = scaler.transform(x_train_raw).astype(np.float32)
+        x_query = scaler.transform(x_query_raw).astype(np.float32)
 
         rust_naive_payload, _, rust_naive_query_emb = run_rust_impl(
             train=x_train,
@@ -639,6 +890,27 @@ def orchestrate(args: argparse.Namespace) -> Dict[str, object]:
             ),
         }
 
+    hard_gate_fail_datasets: List[str] = []
+    overall_fail_datasets: List[str] = []
+    for name, result in report["datasets"].items():
+        gate_summary = result.get("gate_summary", {})
+        if gate_summary.get("hard_gate_status") != "pass":
+            hard_gate_fail_datasets.append(name)
+        if gate_summary.get("overall_status") != "pass":
+            overall_fail_datasets.append(name)
+
+    report["gate_overview"] = {
+        "overall_status": "pass" if not overall_fail_datasets else "fail",
+        "hard_gate_status": "pass" if not hard_gate_fail_datasets else "fail",
+        "failed_datasets": overall_fail_datasets,
+        "failed_hard_gate_datasets": hard_gate_fail_datasets,
+        "status_line": (
+            "PASS"
+            if not hard_gate_fail_datasets
+            else f"FAIL: hard gate failed on datasets={hard_gate_fail_datasets}"
+        ),
+    }
+
     return report
 
 
@@ -656,6 +928,13 @@ def main() -> None:
         output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     print(json.dumps(report, indent=2))
+
+    gate_overview = report.get("gate_overview", {})
+    status_line = str(gate_overview.get("status_line", "UNKNOWN"))
+    print(f"[gate] {status_line}", file=sys.stderr)
+
+    if args.enforce_hard_gate and gate_overview.get("hard_gate_status") != "pass":
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
