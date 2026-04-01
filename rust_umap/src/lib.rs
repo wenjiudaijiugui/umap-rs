@@ -3163,8 +3163,7 @@ fn multi_component_spectral_init_with_layout(
                     component.len(),
                     embedding_dim,
                     &component_edges,
-                    seed
-                        ^ (component_id as u64 + 1).wrapping_mul(0xBF58_476D_1CE4_E5B9),
+                    seed ^ (component_id as u64 + 1).wrapping_mul(0xBF58_476D_1CE4_E5B9),
                 )?;
                 let max_abs = coords
                     .iter()
