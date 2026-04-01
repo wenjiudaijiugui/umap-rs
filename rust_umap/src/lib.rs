@@ -27,6 +27,10 @@ const SPECTRAL_ITERATIVE_MAX_ITERS: usize = 32;
 const SPECTRAL_ORTHO_EPS: f64 = 1e-12;
 
 type KnnRows = (Vec<Vec<usize>>, Vec<Vec<f32>>);
+type EmbeddingRows = Vec<Vec<f32>>;
+type FitArtifacts = (EmbeddingRows, Vec<f32>, Vec<f32>);
+type WeightedUndirectedEdge = (usize, usize, f64);
+type SymmetrizedUndirectedGraph = (Vec<WeightedUndirectedEdge>, Vec<f64>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InitMethod {
@@ -591,7 +595,7 @@ impl UmapModel {
         data: &M,
         knn_indices: &[Vec<usize>],
         knn_dists: &[Vec<f32>],
-    ) -> Result<(Vec<Vec<f32>>, Vec<f32>, Vec<f32>), UmapError> {
+    ) -> Result<FitArtifacts, UmapError> {
         let n_samples = data.n_rows();
         let n_epochs = self
             .params
@@ -675,7 +679,7 @@ impl UmapModel {
         data: &SparseCsrMatrix,
         knn_indices: &[Vec<usize>],
         knn_dists: &[Vec<f32>],
-    ) -> Result<(Vec<Vec<f32>>, Vec<f32>, Vec<f32>), UmapError> {
+    ) -> Result<FitArtifacts, UmapError> {
         let n_samples = data.n_rows();
         let n_epochs = self
             .params
@@ -2568,7 +2572,7 @@ impl SpectralBlock {
 fn symmetrized_undirected_edges(
     n_samples: usize,
     edges: &[Edge],
-) -> Option<(Vec<(usize, usize, f64)>, Vec<f64>)> {
+) -> Option<SymmetrizedUndirectedGraph> {
     if n_samples == 0 || edges.is_empty() {
         return None;
     }
@@ -2609,7 +2613,7 @@ fn symmetrized_undirected_edges(
             degrees[j] += weight;
             (i, j, weight)
         })
-        .collect::<Vec<(usize, usize, f64)>>();
+        .collect::<Vec<WeightedUndirectedEdge>>();
     undirected_edges.sort_unstable_by_key(|&(i, j, _)| (i, j));
 
     if degrees.iter().all(|degree| *degree <= 0.0) {
@@ -2709,11 +2713,11 @@ fn spectral_embedding_from_edges_iterative(
 
     let mut rng = SmallRng::seed_from_u64(seed ^ 0x7A5B_3D91_CE42_A117);
     let mut block = SpectralBlock::zeros(n_samples, subspace_dim);
-    for row in 0..n_samples {
+    for (row, degree) in degrees.iter().enumerate().take(n_samples) {
         let block_row = block.row_mut(row);
-        block_row[0] = degrees[row].sqrt();
-        for col in 1..subspace_dim {
-            block_row[col] = rng.gen_range(-1.0_f64..1.0_f64);
+        block_row[0] = degree.sqrt();
+        for value in block_row.iter_mut().take(subspace_dim).skip(1) {
+            *value = rng.gen_range(-1.0_f64..1.0_f64);
         }
     }
     if !orthonormalize_columns(&mut block) {
@@ -2756,13 +2760,13 @@ fn spectral_embedding_from_edges_iterative(
     let mut coords = vec![vec![0.0_f32; embedding_dim]; n_samples];
     for out_col in 0..embedding_dim {
         let eig_col = order[out_col + 1];
-        for row in 0..n_samples {
+        for (row, coord_row) in coords.iter_mut().enumerate().take(n_samples) {
             let mut value = 0.0_f64;
             let block_row = block.row(row);
-            for basis in 0..subspace_dim {
-                value += block_row[basis] * eig.eigenvectors[(basis, eig_col)];
+            for (basis, &block_value) in block_row.iter().enumerate().take(subspace_dim) {
+                value += block_value * eig.eigenvectors[(basis, eig_col)];
             }
-            coords[row][out_col] = value as f32;
+            coord_row[out_col] = value as f32;
         }
     }
 
@@ -3313,8 +3317,9 @@ where
             for d in 0..low_dim {
                 z_bar[d] += weight * train_embedding[idx][d];
             }
-            for d in 0..high_dim {
-                x_bar[d] += weight * train_data.row(idx)[d];
+            let train_row = train_data.row(idx);
+            for (d, x_bar_d) in x_bar.iter_mut().enumerate().take(high_dim) {
+                *x_bar_d += weight * train_row[d];
             }
         }
 
@@ -4749,12 +4754,19 @@ mod tests {
                 affinity[edge.head][edge.tail] = val;
             }
         }
-        for i in 0..n_samples {
-            for j in (i + 1)..n_samples {
-                let sym = affinity[i][j].max(affinity[j][i]);
-                affinity[i][j] = sym;
-                affinity[j][i] = sym;
+        let mut i = 0usize;
+        while i < n_samples {
+            let (head, tail) = affinity.split_at_mut(i + 1);
+            let row_i = head
+                .last_mut()
+                .expect("split_at_mut(i + 1) must leave row i in the head slice");
+            for (offset, row_j) in tail.iter_mut().enumerate() {
+                let j = i + 1 + offset;
+                let sym = row_i[j].max(row_j[i]);
+                row_i[j] = sym;
+                row_j[i] = sym;
             }
+            i += 1;
         }
 
         let from_edges =

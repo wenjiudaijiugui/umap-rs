@@ -4,17 +4,12 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum AnnMode {
+    #[default]
     Auto,
     Exact,
     Approximate,
-}
-
-impl Default for AnnMode {
-    fn default() -> Self {
-        Self::Auto
-    }
 }
 
 impl AnnMode {
