@@ -5,6 +5,10 @@ Python bindings for `rust_umap` built with PyO3 + maturin.
 ## Local build
 
 ```bash
+. .venv/bin/activate 2>/dev/null || {
+  python -m venv .venv
+  . .venv/bin/activate
+}
 python -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```

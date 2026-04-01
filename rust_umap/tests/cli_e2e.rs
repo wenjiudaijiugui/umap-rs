@@ -172,7 +172,11 @@ fn assert_all_finite(points: &[Vec<f32>]) {
 fn assert_close(lhs: &[Vec<f32>], rhs: &[Vec<f32>], tol: f32) {
     assert_eq!(lhs.len(), rhs.len(), "row count mismatch");
     for (row_idx, (lhs_row, rhs_row)) in lhs.iter().zip(rhs.iter()).enumerate() {
-        assert_eq!(lhs_row.len(), rhs_row.len(), "column count mismatch at row {row_idx}");
+        assert_eq!(
+            lhs_row.len(),
+            rhs_row.len(),
+            "column count mismatch at row {row_idx}"
+        );
         for (col_idx, (&lhs_value, &rhs_value)) in lhs_row.iter().zip(rhs_row.iter()).enumerate() {
             let delta = (lhs_value - rhs_value).abs();
             assert!(

@@ -11,6 +11,7 @@
 
 - breast_cancer: n_used=569, n_original=569, d=30
 - digits: n_used=1797, n_original=1797, d=64
+- california_housing: n_used=4097, n_original=20640, d=8
 
 ## Group A: e2e_mixed_knn_strategy
 
@@ -21,8 +22,8 @@
 
 | Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
 |---|---:|---:|
-| python_umap_learn | 5.281 ± 0.000 | 345.4 ± 0.0 |
-| rust_umap_py | 0.177 ± 0.000 | 29.9 ± 0.0 |
+| python_umap_learn | 7.175 ± 0.000 | 269.1 ± 0.0 |
+| rust_umap_py | 0.951 ± 0.000 | 37.9 ± 0.0 |
 
 - knn_strategy_equivalence: strict_exact
 - knn_strategy_note: Both implementations used exact kNN for this dataset.
@@ -30,32 +31,52 @@
 - rust_umap_py strategy: exact
 - sample_size_for_consistency: 569
 - trustworthiness@15:
-  - python_umap_learn: 0.916196
-  - rust_umap_py: 0.914304
+  - python_umap_learn: 0.914866
+  - rust_umap_py: 0.914375
 - original_knn_recall@15:
-  - python_umap_learn: 0.398711
-  - rust_umap_py: 0.406327
-- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.041796, knn_overlap@15=0.608787
+  - python_umap_learn: 0.408084
+  - rust_umap_py: 0.405155
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.070478, knn_overlap@15=0.573052
 
 ### Dataset: digits
 
 | Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
 |---|---:|---:|
-| python_umap_learn | 6.586 ± 0.000 | 358.9 ± 0.0 |
-| rust_umap_py | 0.492 ± 0.000 | 33.1 ± 0.0 |
+| python_umap_learn | 5.733 ± 0.000 | 280.0 ± 0.0 |
+| rust_umap_py | 5.229 ± 0.000 | 40.8 ± 0.0 |
 
 - knn_strategy_equivalence: strict_exact
 - knn_strategy_note: Both implementations used exact kNN for this dataset.
 - python_umap_learn strategy: exact
 - rust_umap_py strategy: exact
-- sample_size_for_consistency: 1000
+- sample_size_for_consistency: 1200
 - trustworthiness@15:
-  - python_umap_learn: 0.956440
-  - rust_umap_py: 0.967299
+  - python_umap_learn: 0.967994
+  - rust_umap_py: 0.966510
 - original_knn_recall@15:
-  - python_umap_learn: 0.458000
-  - rust_umap_py: 0.474067
-- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.952177, knn_overlap@15=0.624267
+  - python_umap_learn: 0.462111
+  - rust_umap_py: 0.468944
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.692903, knn_overlap@15=0.691222
+
+### Dataset: california_housing
+
+| Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
+|---|---:|---:|
+| python_umap_learn | 10.961 ± 0.000 | 305.9 ± 0.0 |
+| rust_umap_py | 7.432 ± 0.000 | 48.3 ± 0.0 |
+
+- knn_strategy_equivalence: not_equivalent
+- knn_strategy_note: Python path stays exact (force_approximation_algorithm=False), while rust_umap_py switched to ANN because n_samples exceeded approx_knn_threshold.
+- python_umap_learn strategy: exact
+- rust_umap_py strategy: approximate_ann
+- sample_size_for_consistency: 1200
+- trustworthiness@15:
+  - python_umap_learn: 0.961251
+  - rust_umap_py: 0.953599
+- original_knn_recall@15:
+  - python_umap_learn: 0.415389
+  - rust_umap_py: 0.406500
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.296875, knn_overlap@15=0.572833
 
 ## Group B: algo_exact_shared_knn_exact
 
@@ -65,33 +86,49 @@
 
 | Implementation | Fit mean±std (s) | Process max RSS (MB) |
 |---|---:|---:|
-| python_umap_learn | 1.327 ± 0.000 | 309.4 |
-| rust_umap_py | 0.120 ± 0.000 | 30.7 |
+| python_umap_learn | 1.457 ± 0.000 | 246.0 |
+| rust_umap_py | 0.719 ± 0.000 | 38.5 |
 
 - sample_size_for_consistency: 569
 - trustworthiness@15:
-  - python_umap_learn: 0.916197
-  - rust_umap_py: 0.922518
+  - python_umap_learn: 0.917910
+  - rust_umap_py: 0.916365
 - original_knn_recall@15:
-  - python_umap_learn: 0.395079
-  - rust_umap_py: 0.412302
-- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.206557, knn_overlap@15=0.495958
+  - python_umap_learn: 0.397891
+  - rust_umap_py: 0.410076
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.171682, knn_overlap@15=0.543995
 
 ### Dataset: digits
 
 | Implementation | Fit mean±std (s) | Process max RSS (MB) |
 |---|---:|---:|
-| python_umap_learn | 1.943 ± 0.000 | 312.1 |
-| rust_umap_py | 0.342 ± 0.000 | 34.1 |
+| python_umap_learn | 1.821 ± 0.000 | 248.7 |
+| rust_umap_py | 2.057 ± 0.000 | 41.8 |
 
-- sample_size_for_consistency: 1000
+- sample_size_for_consistency: 1200
 - trustworthiness@15:
-  - python_umap_learn: 0.957234
-  - rust_umap_py: 0.965704
+  - python_umap_learn: 0.967898
+  - rust_umap_py: 0.965782
 - original_knn_recall@15:
-  - python_umap_learn: 0.462200
-  - rust_umap_py: 0.474867
-- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.878960, knn_overlap@15=0.614933
+  - python_umap_learn: 0.467722
+  - rust_umap_py: 0.463111
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.929708, knn_overlap@15=0.666833
+
+### Dataset: california_housing
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 2.416 ± 0.000 | 251.4 |
+| rust_umap_py | 4.969 ± 0.000 | 49.3 |
+
+- sample_size_for_consistency: 1200
+- trustworthiness@15:
+  - python_umap_learn: 0.964544
+  - rust_umap_py: 0.958689
+- original_knn_recall@15:
+  - python_umap_learn: 0.416667
+  - rust_umap_py: 0.413111
+- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity=0.220417, knn_overlap@15=0.619944
 
 ## Interop Audit
 

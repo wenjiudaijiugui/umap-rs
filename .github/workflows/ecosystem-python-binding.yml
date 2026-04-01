@@ -33,6 +33,9 @@ jobs:
           python-version: '3.12'
       - name: Install Python deps
         run: |
+          python -m venv .venv
+          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          . .venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install maturin pytest -r benchmarks/requirements-bench.txt
       - name: Build and install rust_umap_py
@@ -48,11 +51,13 @@ jobs:
             --warmup 0 \
             --repeats 1 \
             --sample-cap-consistency 1200 \
-            --ensure-ann-coverage
+            --ensure-ann-coverage \
+            --large-max-samples 4097
       - name: Run ecosystem machine-readable gate
         run: |
           python benchmarks/ci_ecosystem_python_binding_gate.py \
-            --report-json benchmarks/report_ecosystem_python_binding.json
+            --report-json benchmarks/report_ecosystem_python_binding.json \
+            --max-rust-over-python-speed-ratio 2.5
       - name: Upload ecosystem benchmark artifacts
         uses: actions/upload-artifact@v4
         with:

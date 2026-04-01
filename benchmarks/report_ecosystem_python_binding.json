@@ -9,6 +9,7 @@
     "n_epochs": 200,
     "init": "random",
     "metric": "euclidean",
+    "ensure_ann_coverage": true,
     "datasets": [
       {
         "name": "breast_cancer",
@@ -21,6 +22,12 @@
         "n_samples_original": 1797,
         "n_samples_used": 1797,
         "n_features": 64
+      },
+      {
+        "name": "california_housing",
+        "n_samples_original": 20640,
+        "n_samples_used": 4097,
+        "n_features": 8
       }
     ],
     "thread_env": {
@@ -39,44 +46,44 @@
       "breast_cancer": {
         "speed_and_memory": {
           "python_umap_learn": {
-            "elapsed_mean_sec": 5.28070122400095,
+            "elapsed_mean_sec": 7.174946940001973,
             "elapsed_std_sec": 0.0,
-            "max_rss_mean_mb": 345.44140625,
+            "max_rss_mean_mb": 269.140625,
             "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              5.28070122400095
+              7.174946940001973
             ],
             "max_rss_samples_mb": [
-              345.44140625
+              269.140625
             ]
           },
           "rust_umap_py": {
-            "elapsed_mean_sec": 0.17664541200065287,
+            "elapsed_mean_sec": 0.9514350280005601,
             "elapsed_std_sec": 0.0,
-            "max_rss_mean_mb": 29.9375,
+            "max_rss_mean_mb": 37.9140625,
             "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              0.17664541200065287
+              0.9514350280005601
             ],
             "max_rss_samples_mb": [
-              29.9375
+              37.9140625
             ]
           }
         },
         "consistency": {
           "sample_size_for_consistency": 569,
           "trustworthiness_at_15": {
-            "python_umap_learn": 0.9161963987974533,
-            "rust_umap_py": 0.9143041687857154
+            "python_umap_learn": 0.914865528925283,
+            "rust_umap_py": 0.91437476797758
           },
           "original_knn_recall_at_15": {
-            "python_umap_learn": 0.39871118922085624,
-            "rust_umap_py": 0.4063268892794386
+            "python_umap_learn": 0.4080843585237268,
+            "rust_umap_py": 0.4051552431165797
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.04179616340125942,
-              "knn_overlap_at_15": 0.6087873462214419
+              "procrustes_disparity": 0.07047840827923094,
+              "knn_overlap_at_15": 0.5730521382542477
             }
           }
         },
@@ -97,44 +104,44 @@
       "digits": {
         "speed_and_memory": {
           "python_umap_learn": {
-            "elapsed_mean_sec": 6.586295286000677,
+            "elapsed_mean_sec": 5.733042366002337,
             "elapsed_std_sec": 0.0,
-            "max_rss_mean_mb": 358.8515625,
+            "max_rss_mean_mb": 280.046875,
             "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              6.586295286000677
+              5.733042366002337
             ],
             "max_rss_samples_mb": [
-              358.8515625
+              280.046875
             ]
           },
           "rust_umap_py": {
-            "elapsed_mean_sec": 0.4924567929992918,
+            "elapsed_mean_sec": 5.2291264700033935,
             "elapsed_std_sec": 0.0,
-            "max_rss_mean_mb": 33.05078125,
+            "max_rss_mean_mb": 40.84375,
             "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              0.4924567929992918
+              5.2291264700033935
             ],
             "max_rss_samples_mb": [
-              33.05078125
+              40.84375
             ]
           }
         },
         "consistency": {
-          "sample_size_for_consistency": 1000,
+          "sample_size_for_consistency": 1200,
           "trustworthiness_at_15": {
-            "python_umap_learn": 0.9564395087001023,
-            "rust_umap_py": 0.9672993517570795
+            "python_umap_learn": 0.9679936750684415,
+            "rust_umap_py": 0.9665102426130463
           },
           "original_knn_recall_at_15": {
-            "python_umap_learn": 0.45799999999999885,
-            "rust_umap_py": 0.4740666666666656
+            "python_umap_learn": 0.46211111111111014,
+            "rust_umap_py": 0.4689444444444435
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.9521765611010129,
-              "knn_overlap_at_15": 0.6242666666666679
+              "procrustes_disparity": 0.6929029694770161,
+              "knn_overlap_at_15": 0.69122222222222
             }
           }
         },
@@ -151,19 +158,77 @@
             "approx_knn_threshold": 4096
           }
         }
+      },
+      "california_housing": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 10.960785774001124,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 305.88671875,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              10.960785774001124
+            ],
+            "max_rss_samples_mb": [
+              305.88671875
+            ]
+          },
+          "rust_umap_py": {
+            "elapsed_mean_sec": 7.432257860000391,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 48.2890625,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              7.432257860000391
+            ],
+            "max_rss_samples_mb": [
+              48.2890625
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1200,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9612507788161994,
+            "rust_umap_py": 0.9535994052676295
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.41538888888888603,
+            "rust_umap_py": 0.4064999999999974
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap_py": {
+              "procrustes_disparity": 0.29687540833726667,
+              "knn_overlap_at_15": 0.5728333333333336
+            }
+          }
+        },
+        "knn_strategy": {
+          "equivalence": "not_equivalent",
+          "note": "Python path stays exact (force_approximation_algorithm=False), while rust_umap_py switched to ANN because n_samples exceeded approx_knn_threshold.",
+          "python_umap_learn": {
+            "strategy": "exact",
+            "force_approximation_algorithm": false
+          },
+          "rust_umap_py": {
+            "strategy": "approximate_ann",
+            "use_approximate_knn": true,
+            "approx_knn_threshold": 4096
+          }
+        }
       }
     },
     "algo_exact_shared_knn_exact": {
       "breast_cancer": {
         "fit_timing_and_process_memory": {
           "python_umap_learn": {
-            "fit_mean_sec": 1.326924233999307,
+            "fit_mean_sec": 1.457438285000535,
             "fit_std_sec": 0.0,
             "fit_times_sec": [
-              1.326924233999307
+              1.457438285000535
             ],
-            "process_elapsed_sec": 3.376851892000559,
-            "process_max_rss_mb": 309.4140625,
+            "process_elapsed_sec": 3.5246330089976254,
+            "process_max_rss_mb": 246.01953125,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
@@ -174,13 +239,13 @@
             }
           },
           "rust_umap_py": {
-            "fit_mean_sec": 0.12007006000021647,
+            "fit_mean_sec": 0.7190109069997561,
             "fit_std_sec": 0.0,
             "fit_times_sec": [
-              0.12007006000021647
+              0.7190109069997561
             ],
-            "process_elapsed_sec": 0.1720183449997421,
-            "process_max_rss_mb": 30.71484375,
+            "process_elapsed_sec": 0.7868644669979403,
+            "process_max_rss_mb": 38.46875,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
@@ -189,24 +254,25 @@
               "timing_boundary": "model.fit_transform*(x, ...)",
               "post_timing_dtype_copy": false,
               "embedding_buffer_reused": true,
-              "precomputed_validation_each_run": false
+              "precomputed_validation_each_run": false,
+              "precomputed_validation_mode": "first_run_only"
             }
           }
         },
         "consistency": {
           "sample_size_for_consistency": 569,
           "trustworthiness_at_15": {
-            "python_umap_learn": 0.916196827971872,
-            "rust_umap_py": 0.9225177088094487
+            "python_umap_learn": 0.9179103068382506,
+            "rust_umap_py": 0.916365278931184
           },
           "original_knn_recall_at_15": {
-            "python_umap_learn": 0.3950790861159939,
-            "rust_umap_py": 0.4123022847100187
+            "python_umap_learn": 0.3978910369068553,
+            "rust_umap_py": 0.4100761570005869
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.206557335610246,
-              "knn_overlap_at_15": 0.49595782073813705
+              "procrustes_disparity": 0.17168183087285732,
+              "knn_overlap_at_15": 0.5439953134153491
             }
           }
         }
@@ -214,13 +280,13 @@
       "digits": {
         "fit_timing_and_process_memory": {
           "python_umap_learn": {
-            "fit_mean_sec": 1.943115640000542,
+            "fit_mean_sec": 1.820526832001633,
             "fit_std_sec": 0.0,
             "fit_times_sec": [
-              1.943115640000542
+              1.820526832001633
             ],
-            "process_elapsed_sec": 3.9861117569998896,
-            "process_max_rss_mb": 312.125,
+            "process_elapsed_sec": 3.886764947001211,
+            "process_max_rss_mb": 248.72265625,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
@@ -231,13 +297,13 @@
             }
           },
           "rust_umap_py": {
-            "fit_mean_sec": 0.34202793599979486,
+            "fit_mean_sec": 2.0571490100010124,
             "fit_std_sec": 0.0,
             "fit_times_sec": [
-              0.34202793599979486
+              2.0571490100010124
             ],
-            "process_elapsed_sec": 0.41164697099884506,
-            "process_max_rss_mb": 34.0859375,
+            "process_elapsed_sec": 2.135263530002703,
+            "process_max_rss_mb": 41.84375,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
@@ -246,24 +312,83 @@
               "timing_boundary": "model.fit_transform*(x, ...)",
               "post_timing_dtype_copy": false,
               "embedding_buffer_reused": true,
-              "precomputed_validation_each_run": false
+              "precomputed_validation_each_run": false,
+              "precomputed_validation_mode": "first_run_only"
             }
           }
         },
         "consistency": {
-          "sample_size_for_consistency": 1000,
+          "sample_size_for_consistency": 1200,
           "trustworthiness_at_15": {
-            "python_umap_learn": 0.9572340498123507,
-            "rust_umap_py": 0.965703582395087
+            "python_umap_learn": 0.9678982346832814,
+            "rust_umap_py": 0.9657816482582837
           },
           "original_knn_recall_at_15": {
-            "python_umap_learn": 0.4621999999999992,
-            "rust_umap_py": 0.4748666666666655
+            "python_umap_learn": 0.46772222222222143,
+            "rust_umap_py": 0.4631111111111101
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.8789601279228709,
-              "knn_overlap_at_15": 0.6149333333333343
+              "procrustes_disparity": 0.9297081350532177,
+              "knn_overlap_at_15": 0.6668333333333323
+            }
+          }
+        }
+      },
+      "california_housing": {
+        "fit_timing_and_process_memory": {
+          "python_umap_learn": {
+            "fit_mean_sec": 2.4162000010001066,
+            "fit_std_sec": 0.0,
+            "fit_times_sec": [
+              2.4162000010001066
+            ],
+            "process_elapsed_sec": 4.482322261999798,
+            "process_max_rss_mb": 251.36328125,
+            "interop": {
+              "input_dtype": "float32",
+              "input_c_contiguous": true,
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform(x)",
+              "post_timing_dtype_copy": false
+            }
+          },
+          "rust_umap_py": {
+            "fit_mean_sec": 4.969269164997968,
+            "fit_std_sec": 0.0,
+            "fit_times_sec": [
+              4.969269164997968
+            ],
+            "process_elapsed_sec": 5.043953716998658,
+            "process_max_rss_mb": 49.34765625,
+            "interop": {
+              "input_dtype": "float32",
+              "input_c_contiguous": true,
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform*(x, ...)",
+              "post_timing_dtype_copy": false,
+              "embedding_buffer_reused": true,
+              "precomputed_validation_each_run": false,
+              "precomputed_validation_mode": "first_run_only"
+            }
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1200,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9645435665061833,
+            "rust_umap_py": 0.9586890399320306
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.4166666666666639,
+            "rust_umap_py": 0.41311111111110893
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap_py": {
+              "procrustes_disparity": 0.2204171343169634,
+              "knn_overlap_at_15": 0.6199444444444439
             }
           }
         }

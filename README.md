@@ -45,7 +45,11 @@ if [ -z "$PYTHON_BIN" ]; then
   echo "python3/python not found" >&2
   exit 1
 fi
-$PYTHON_BIN -m pip install --upgrade pip maturin
+if [ ! -d .venv ]; then
+  "$PYTHON_BIN" -m venv .venv
+fi
+. .venv/bin/activate
+python -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```
 
@@ -162,6 +166,11 @@ else
 fi
 
 # Build/install local binding before running binding tests.
+. .venv/bin/activate 2>/dev/null || {
+  "$PYTHON_BIN" -m venv .venv
+  . .venv/bin/activate
+}
+python -m pip install --upgrade pip maturin
 maturin develop --manifest-path rust_umap_py/Cargo.toml
 
 # candidate-root and baseline-root must point to different trees.

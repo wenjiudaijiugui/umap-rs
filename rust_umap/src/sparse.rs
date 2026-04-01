@@ -583,7 +583,10 @@ mod tests {
             let (idx_a, dist_a) = exact_nearest_neighbors(&csr, k, metric);
             let (idx_b, dist_b) = exact_nearest_neighbors(&csr, k, metric);
             assert_eq!(idx_a, idx_b, "sparse self-knn index order should be stable");
-            assert_eq!(dist_a, dist_b, "sparse self-knn distance order should be stable");
+            assert_eq!(
+                dist_a, dist_b,
+                "sparse self-knn distance order should be stable"
+            );
 
             let (q_idx_a, q_dist_a) =
                 exact_nearest_neighbors_dense_query(&query, &csr, k, metric).expect("query knn");
@@ -604,7 +607,10 @@ mod tests {
                 .map(|(ri, r)| (ri, dense_distance(&query[0], r, metric)))
                 .collect::<Vec<_>>();
             expected.sort_by(|a, b| a.1.total_cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
-            assert_eq!(q_idx_a[0], expected.iter().take(k).map(|x| x.0).collect::<Vec<_>>());
+            assert_eq!(
+                q_idx_a[0],
+                expected.iter().take(k).map(|x| x.0).collect::<Vec<_>>()
+            );
         }
     }
 }
