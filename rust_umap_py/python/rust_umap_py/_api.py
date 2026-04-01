@@ -82,6 +82,21 @@ def _as_out_buffer(out: Any, shape: tuple[int, int]) -> np.ndarray:
     return out
 
 
+def _normalize_ann_mode(
+    ann_mode: Any,
+    use_approximate_knn: bool,
+    approx_knn_threshold: int,
+) -> tuple[str, bool, int]:
+    mode = str(ann_mode).lower()
+    if mode == "auto":
+        return mode, use_approximate_knn, approx_knn_threshold
+    if mode == "exact":
+        return mode, False, approx_knn_threshold
+    if mode == "approximate":
+        return mode, True, 0
+    raise ValueError(f"unsupported ann_mode '{ann_mode}', expected auto|exact|approximate")
+
+
 class Umap:
     def __init__(
         self,
@@ -99,6 +114,7 @@ class Umap:
         negative_sample_rate: int = 5,
         random_seed: int = 42,
         init: str = "spectral",
+        ann_mode: str = "auto",
         use_approximate_knn: bool = True,
         approx_knn_candidates: int = 30,
         approx_knn_iters: int = 10,
@@ -106,7 +122,12 @@ class Umap:
     ) -> None:
         self.n_neighbors = int(n_neighbors)
         self.n_components = int(n_components)
-        self._n_features: int | None = None
+        ann_mode, use_approximate_knn, approx_knn_threshold = _normalize_ann_mode(
+            ann_mode,
+            use_approximate_knn,
+            approx_knn_threshold,
+        )
+        self.ann_mode = ann_mode
         self._core = UmapCore(
             n_neighbors=n_neighbors,
             n_components=n_components,
@@ -132,19 +153,16 @@ class Umap:
         if csr is not None:
             indptr, indices, values, _, n_cols = csr
             self._core.fit_sparse_csr(indptr, indices, values, n_cols)
-            self._n_features = n_cols
             return self
 
         arr = _as_f32_matrix(data, "data")
         self._core.fit(arr)
-        self._n_features = arr.shape[1]
         return self
 
     def fit_transform(self, data: Any, *, out: np.ndarray | None = None) -> np.ndarray:
         csr = _maybe_as_csr_parts(data, "data")
         if csr is not None:
             indptr, indices, values, n_rows, n_cols = csr
-            self._n_features = n_cols
             expected_shape = (n_rows, self.n_components)
             if out is None:
                 return self._core.fit_transform_sparse_csr(indptr, indices, values, n_cols)
@@ -153,7 +171,6 @@ class Umap:
             return out_buf
 
         arr = _as_f32_matrix(data, "data")
-        self._n_features = arr.shape[1]
         expected_shape = (arr.shape[0], self.n_components)
         if out is None:
             return self._core.fit_transform(arr)
@@ -200,9 +217,10 @@ class Umap:
         arr = _as_f32_matrix(embedded_query, "embedded_query")
         if out is None:
             return self._core.inverse_transform(arr)
-        if self._n_features is None:
+        n_features = self._core.n_features
+        if n_features is None:
             raise RuntimeError("model must be fit before inverse_transform(out=...)")
-        out_buf = _as_out_buffer(out, (arr.shape[0], self._n_features))
+        out_buf = _as_out_buffer(out, (arr.shape[0], n_features))
         self._core.inverse_transform_into(arr, out_buf)
         return out_buf
 

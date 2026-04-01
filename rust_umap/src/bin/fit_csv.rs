@@ -1,12 +1,12 @@
-use rust_umap::{UmapModel, UmapParams};
+use rust_umap::UmapModel;
 use std::env;
 use std::error::Error;
 use std::path::Path;
 
+#[path = "../cli_common.rs"]
 mod common_cli;
 use common_cli::{
-    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr,
-    write_csv,
+    extract_optional_args, parse_umap_args, read_csv, read_csv_usize, read_sparse_csr, write_csv,
 };
 
 fn usage() {
@@ -14,6 +14,7 @@ fn usage() {
         "Usage:\n  fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \
           <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> \
           <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] \
+          [--ann-mode auto|exact|approximate] \
           [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine] \n\
           [--learning-rate <f32>] [--min-dist <f32>] [--spread <f32>] \n\
           [--local-connectivity <f32>] [--set-op-mix-ratio <f32>] \n\
@@ -35,15 +36,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input_path = Path::new(&args[1]);
     let output_path = Path::new(&args[2]);
 
-    let n_neighbors = args[3].parse::<usize>()?;
-    let n_components = args[4].parse::<usize>()?;
-    let n_epochs = args[5].parse::<usize>()?;
-    let seed = args[6].parse::<u64>()?;
-    let init = parse_init(&args[7])?;
-    let use_approximate_knn = parse_bool(&args[8])?;
-    let approx_knn_candidates = args[9].parse::<usize>()?;
-    let approx_knn_iters = args[10].parse::<usize>()?;
-    let approx_knn_threshold = args[11].parse::<usize>()?;
+    let parsed = parse_umap_args(&args)?;
 
     let mode = if args.len() >= 13 {
         args[12].as_str()
@@ -57,25 +50,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         return Err("--knn-metric is only valid in fit_precomputed mode".into());
     }
 
-    let mut params = UmapParams {
-        n_neighbors,
-        n_components,
-        n_epochs: Some(n_epochs),
-        metric: optional.metric,
-        learning_rate: 1.0,
-        min_dist: 0.1,
-        spread: 1.0,
-        local_connectivity: 1.0,
-        set_op_mix_ratio: 1.0,
-        repulsion_strength: 1.0,
-        negative_sample_rate: 5,
-        random_seed: seed,
-        init,
-        use_approximate_knn,
-        approx_knn_candidates,
-        approx_knn_iters,
-        approx_knn_threshold,
-    };
+    let mut params = parsed.build_params(optional.metric, optional.ann_mode);
     optional.overrides.apply_to(&mut params)?;
 
     let mut model = UmapModel::new(params);

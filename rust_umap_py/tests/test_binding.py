@@ -11,6 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path = [p for p in sys.path if Path(p or ".").resolve() != _REPO_ROOT]
 
 from rust_umap_py import Umap
+import rust_umap_py._api as api
 
 
 def make_dataset(n_samples: int = 180, n_features: int = 12, seed: int = 42) -> np.ndarray:
@@ -60,6 +61,48 @@ def test_fit_transform_out_buffer_and_inverse_roundtrip() -> None:
     assert np.all(np.isfinite(reconstructed))
 
 
+def test_ann_mode_overrides_legacy_knn_flags(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: list[dict[str, object]] = []
+
+    class FakeCore:
+        def __init__(self, **kwargs: object) -> None:
+            captured.append(kwargs)
+            self.n_features = None
+
+    monkeypatch.setattr(api, "UmapCore", FakeCore)
+
+    auto = api.Umap(
+        ann_mode="auto",
+        use_approximate_knn=False,
+        approx_knn_threshold=321,
+    )
+    exact = api.Umap(
+        ann_mode="exact",
+        use_approximate_knn=True,
+        approx_knn_threshold=321,
+    )
+    approximate = api.Umap(
+        ann_mode="approximate",
+        use_approximate_knn=False,
+        approx_knn_threshold=321,
+    )
+
+    assert auto.ann_mode == "auto"
+    assert exact.ann_mode == "exact"
+    assert approximate.ann_mode == "approximate"
+    assert captured[0]["use_approximate_knn"] is False
+    assert captured[0]["approx_knn_threshold"] == 321
+    assert captured[1]["use_approximate_knn"] is False
+    assert captured[1]["approx_knn_threshold"] == 321
+    assert captured[2]["use_approximate_knn"] is True
+    assert captured[2]["approx_knn_threshold"] == 0
+
+
+def test_ann_mode_rejects_unknown_value() -> None:
+    with pytest.raises(ValueError, match="unsupported ann_mode 'hybrid'"):
+        Umap(ann_mode="hybrid")
+
+
 def test_transform_and_inverse_transform_support_out_buffers() -> None:
     x = make_dataset(n_samples=120, n_features=10, seed=21)
     model = Umap(
@@ -84,6 +127,29 @@ def test_transform_and_inverse_transform_support_out_buffers() -> None:
     assert reconstructed is reconstructed_out
     assert reconstructed.shape == query.shape
     assert np.all(np.isfinite(reconstructed))
+
+
+def test_inverse_transform_empty_input_preserves_feature_width() -> None:
+    x = make_dataset(n_samples=96, n_features=11, seed=25)
+    model = Umap(
+        n_neighbors=10,
+        n_components=2,
+        n_epochs=50,
+        metric="euclidean",
+        init="random",
+        random_seed=31,
+        use_approximate_knn=False,
+    )
+    model.fit(x)
+
+    empty_embedded = np.empty((0, 2), dtype=np.float32)
+    reconstructed = model.inverse_transform(empty_embedded)
+    assert reconstructed.shape == (0, x.shape[1])
+
+    out = np.empty((0, x.shape[1]), dtype=np.float32)
+    reconstructed_out = model.inverse_transform(empty_embedded, out=out)
+    assert reconstructed_out is out
+    assert reconstructed_out.shape == (0, x.shape[1])
 
 
 def test_precomputed_knn_path_consistency() -> None:

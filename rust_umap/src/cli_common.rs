@@ -4,6 +4,34 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AnnMode {
+    Auto,
+    Exact,
+    Approximate,
+}
+
+impl Default for AnnMode {
+    fn default() -> Self {
+        Self::Auto
+    }
+}
+
+impl AnnMode {
+    pub fn apply_to(self, params: &mut UmapParams) {
+        match self {
+            Self::Auto => {}
+            Self::Exact => {
+                params.use_approximate_knn = false;
+            }
+            Self::Approximate => {
+                params.use_approximate_knn = true;
+                params.approx_knn_threshold = 0;
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct SparseInputArgs {
     pub indptr_path: String,
@@ -64,10 +92,67 @@ impl UmapParamOverrides {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParsedUmapArgs {
+    pub n_neighbors: usize,
+    pub n_components: usize,
+    pub n_epochs: usize,
+    pub seed: u64,
+    pub init: InitMethod,
+    pub use_approximate_knn: bool,
+    pub approx_knn_candidates: usize,
+    pub approx_knn_iters: usize,
+    pub approx_knn_threshold: usize,
+}
+
+impl ParsedUmapArgs {
+    pub fn build_params(self, metric: Metric, ann_mode: AnnMode) -> UmapParams {
+        let mut params = UmapParams {
+            n_neighbors: self.n_neighbors,
+            n_components: self.n_components,
+            n_epochs: Some(self.n_epochs),
+            metric,
+            random_seed: self.seed,
+            init: self.init,
+            use_approximate_knn: self.use_approximate_knn,
+            approx_knn_candidates: self.approx_knn_candidates,
+            approx_knn_iters: self.approx_knn_iters,
+            approx_knn_threshold: self.approx_knn_threshold,
+            ..UmapParams::default()
+        };
+        ann_mode.apply_to(&mut params);
+        params
+    }
+}
+
+pub fn parse_umap_args(args: &[String]) -> Result<ParsedUmapArgs, Box<dyn Error>> {
+    Ok(ParsedUmapArgs {
+        n_neighbors: args[3].parse::<usize>()?,
+        n_components: args[4].parse::<usize>()?,
+        n_epochs: args[5].parse::<usize>()?,
+        seed: args[6].parse::<u64>()?,
+        init: parse_init(&args[7])?,
+        use_approximate_knn: parse_bool(&args[8])?,
+        approx_knn_candidates: args[9].parse::<usize>()?,
+        approx_knn_iters: args[10].parse::<usize>()?,
+        approx_knn_threshold: args[11].parse::<usize>()?,
+    })
+}
+
+pub fn parse_ann_mode(s: &str) -> Result<AnnMode, Box<dyn Error>> {
+    match s.to_ascii_lowercase().as_str() {
+        "auto" => Ok(AnnMode::Auto),
+        "exact" => Ok(AnnMode::Exact),
+        "approximate" => Ok(AnnMode::Approximate),
+        _ => Err(format!("unsupported ann mode '{s}', expected auto|exact|approximate").into()),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CliOptionalArgs {
     pub metric: Metric,
     pub knn_metric: Option<Metric>,
+    pub ann_mode: AnnMode,
     pub sparse_input: Option<SparseInputArgs>,
     pub overrides: UmapParamOverrides,
 }
@@ -113,6 +198,7 @@ pub fn parse_metric(s: &str) -> Result<Metric, Box<dyn Error>> {
 pub fn extract_optional_args(args: &mut Vec<String>) -> Result<CliOptionalArgs, Box<dyn Error>> {
     let mut metric = Metric::Euclidean;
     let mut knn_metric: Option<Metric> = None;
+    let mut ann_mode = AnnMode::Auto;
     let mut csr_indptr: Option<String> = None;
     let mut csr_indices: Option<String> = None;
     let mut csr_data: Option<String> = None;
@@ -131,6 +217,12 @@ pub fn extract_optional_args(args: &mut Vec<String>) -> Result<CliOptionalArgs, 
                 return Err("--knn-metric requires a value".into());
             }
             knn_metric = Some(parse_metric(&args[i + 1])?);
+            args.drain(i..=i + 1);
+        } else if args[i] == "--ann-mode" {
+            if i + 1 >= args.len() {
+                return Err("--ann-mode requires a value".into());
+            }
+            ann_mode = parse_ann_mode(&args[i + 1])?;
             args.drain(i..=i + 1);
         } else if args[i] == "--csr-indptr" {
             if i + 1 >= args.len() {
@@ -203,6 +295,7 @@ pub fn extract_optional_args(args: &mut Vec<String>) -> Result<CliOptionalArgs, 
     Ok(CliOptionalArgs {
         metric,
         knn_metric,
+        ann_mode,
         sparse_input: sparse,
         overrides,
     })
@@ -325,10 +418,6 @@ pub fn write_csv(path: &Path, arr: &[Vec<f32>]) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-// Keep this file buildable as an inert auxiliary bin target when Cargo scans src/bin.
-#[allow(dead_code)]
-fn main() {}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -343,6 +432,8 @@ mod tests {
             "cosine".to_string(),
             "--knn-metric".to_string(),
             "manhattan".to_string(),
+            "--ann-mode".to_string(),
+            "exact".to_string(),
             "--learning-rate".to_string(),
             "0.25".to_string(),
             "--min-dist".to_string(),
@@ -371,6 +462,7 @@ mod tests {
         let parsed = extract_optional_args(&mut args).expect("flags should parse");
         assert_eq!(parsed.metric, Metric::Cosine);
         assert_eq!(parsed.knn_metric, Some(Metric::Manhattan));
+        assert_eq!(parsed.ann_mode, AnnMode::Exact);
         assert_eq!(
             parsed.overrides,
             UmapParamOverrides {
@@ -431,5 +523,66 @@ mod tests {
         .apply_to(&mut params)
         .expect_err("NaN override must fail");
         assert!(err.to_string().contains("--learning-rate must be finite"));
+    }
+
+    #[test]
+    fn parse_umap_args_reads_shared_positional_fields() {
+        let args = vec![
+            "fit_csv".to_string(),
+            "in.csv".to_string(),
+            "out.csv".to_string(),
+            "15".to_string(),
+            "2".to_string(),
+            "120".to_string(),
+            "99".to_string(),
+            "random".to_string(),
+            "true".to_string(),
+            "40".to_string(),
+            "11".to_string(),
+            "2048".to_string(),
+        ];
+
+        let parsed = parse_umap_args(&args).expect("shared positional args should parse");
+        assert_eq!(
+            parsed,
+            ParsedUmapArgs {
+                n_neighbors: 15,
+                n_components: 2,
+                n_epochs: 120,
+                seed: 99,
+                init: InitMethod::Random,
+                use_approximate_knn: true,
+                approx_knn_candidates: 40,
+                approx_knn_iters: 11,
+                approx_knn_threshold: 2048,
+            }
+        );
+    }
+
+    #[test]
+    fn ann_mode_mapping_respects_auto_exact_and_approximate() {
+        let parsed = ParsedUmapArgs {
+            n_neighbors: 15,
+            n_components: 2,
+            n_epochs: 120,
+            seed: 99,
+            init: InitMethod::Random,
+            use_approximate_knn: false,
+            approx_knn_candidates: 40,
+            approx_knn_iters: 11,
+            approx_knn_threshold: 2048,
+        };
+
+        let auto = parsed.build_params(Metric::Euclidean, AnnMode::Auto);
+        assert!(!auto.use_approximate_knn);
+        assert_eq!(auto.approx_knn_threshold, 2048);
+
+        let exact = parsed.build_params(Metric::Euclidean, AnnMode::Exact);
+        assert!(!exact.use_approximate_knn);
+        assert_eq!(exact.approx_knn_threshold, 2048);
+
+        let approximate = parsed.build_params(Metric::Euclidean, AnnMode::Approximate);
+        assert!(approximate.use_approximate_knn);
+        assert_eq!(approximate.approx_knn_threshold, 0);
     }
 }

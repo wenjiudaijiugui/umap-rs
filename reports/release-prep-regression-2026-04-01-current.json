@@ -1,0 +1,855 @@
+{
+  "schema_version": 1,
+  "gate": "release_prep_regression",
+  "strict": true,
+  "overall_pass": true,
+  "timestamp_unix": 1775050601,
+  "candidate_root": ".",
+  "baseline_root": "/tmp/umap-rs-baseline-current-336287",
+  "metrics": [
+    "euclidean",
+    "manhattan",
+    "cosine"
+  ],
+  "gate_config": "benchmarks/gate_thresholds.json",
+  "require_r": true,
+  "artifacts_dir": "reports/release-prep-regression-2026-04-01-current.artifacts",
+  "build_reuse": {
+    "candidate_fit_csv": "rust_umap/target/release/fit_csv",
+    "candidate_bench_fit_csv": "rust_umap/target/release/bench_fit_csv",
+    "baseline_bench_fit_csv": "/tmp/umap-rs-baseline-current-336287/rust_umap/target/release/bench_fit_csv"
+  },
+  "failures": [],
+  "results": [
+    {
+      "id": "wave1_smoke",
+      "pass": true,
+      "elapsed_sec": 0.6392764679985703,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_wave1_smoke.py --manifest-path rust_umap/Cargo.toml --output-json reports/release-prep-regression-2026-04-01-current.artifacts/wave1-smoke.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/wave1-smoke.json",
+      "returncode": 0,
+      "gate_config_forwarded": false,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "ized + debuginfo] target(s) in 0.01s\\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\\n\"}, {\"id\": \"p7_aligned_warmstart_gap\", \"track\": \"P7\", \"pass\": true, \"elapsed_sec\": 0.10497296300309245, \"command\": \"cargo test --manifest-path rust_umap/Cargo.toml aligned::tests::warmstart_reduces_initial_identity_gap -- --exact\", \"stdout_tail\": \"\\nrunning 1 test\\ntest aligned::tests::warmstart_reduces_initial_identity_gap ... ok\\n\\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.07s\\n\\n\\nrunning 0 tests\\n\\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\\n\\n\\nrunning 0 tests\\n\\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\\n\\n\\nrunning 0 tests\\n\\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\\n\\n\\nrunning 0 tests\\n\\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\\n\\n\", \"stderr_tail\": \"    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\\n\"}]}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "gate": "wave1_algo_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "timestamp_unix": 1775050559,
+        "checks": [
+          {
+            "id": "p1_input_contract_nonfinite",
+            "track": "P1",
+            "pass": true,
+            "elapsed_sec": 0.04204402200412005,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::fit_rejects_non_finite_input_values -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::fit_rejects_non_finite_input_values ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p1_precomputed_distance_contract",
+            "track": "P1",
+            "pass": true,
+            "elapsed_sec": 0.09756142900005216,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::precomputed_knn_rejects_invalid_distances -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::precomputed_knn_rejects_invalid_distances ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.06s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p2_ann_recall_euclidean",
+            "track": "P2",
+            "pass": true,
+            "elapsed_sec": 0.09096585100633092,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::approximate_knn_recall_reasonable_euclidean -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::approximate_knn_recall_reasonable_euclidean ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.04s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p2_ann_recall_cosine",
+            "track": "P2",
+            "pass": true,
+            "elapsed_sec": 0.09668521099956706,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::approximate_knn_recall_reasonable_cosine -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::approximate_knn_recall_reasonable_cosine ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.06s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p3_sparse_manhattan",
+            "track": "P3",
+            "pass": true,
+            "elapsed_sec": 0.07402112099953229,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::sparse_csr_fit_transform_supports_manhattan_metric -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::sparse_csr_fit_transform_supports_manhattan_metric ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.03s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p3_sparse_cosine",
+            "track": "P3",
+            "pass": true,
+            "elapsed_sec": 0.06734384499577573,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml tests::sparse_csr_fit_transform_supports_cosine_metric -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest tests::sparse_csr_fit_transform_supports_cosine_metric ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.03s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p6_parametric_pairwise_validation",
+            "track": "P6",
+            "pass": true,
+            "elapsed_sec": 0.03868323400092777,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml parametric::tests::parametric_rejects_invalid_pairwise_loss_weight -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest parametric::tests::parametric_rejects_invalid_pairwise_loss_weight ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          },
+          {
+            "id": "p7_aligned_warmstart_gap",
+            "track": "P7",
+            "pass": true,
+            "elapsed_sec": 0.10497296300309245,
+            "command": "cargo test --manifest-path rust_umap/Cargo.toml aligned::tests::warmstart_reduces_initial_identity_gap -- --exact",
+            "stdout_tail": "\nrunning 1 test\ntest aligned::tests::warmstart_reduces_initial_identity_gap ... ok\n\ntest result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 47 filtered out; finished in 0.07s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 8 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s\n\n\nrunning 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.00s\n\n",
+            "stderr_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (rust_umap/target/debug/deps/rust_umap-2953cdf96b8d5759)\n     Running unittests src/bin/bench_fit_csv.rs (rust_umap/target/debug/deps/bench_fit_csv-ec9b8dd8b316d591)\n     Running unittests src/bin/fit_csv.rs (rust_umap/target/debug/deps/fit_csv-3abc65820e2b0c30)\n     Running unittests src/main.rs (rust_umap/target/debug/deps/rust_umap-2d94721e1cf8e603)\n     Running tests/cli_e2e.rs (rust_umap/target/debug/deps/cli_e2e-8fb1303837fa8eac)\n"
+          }
+        ]
+      }
+    },
+    {
+      "id": "ann_e2e_smoke",
+      "pass": true,
+      "elapsed_sec": 11.76075788399612,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_ann_smoke.py --python-bin /home/shenshang/miniforge3/envs/umap_bench/bin/python --rscript-bin /home/shenshang/miniforge3/envs/umap_bench/bin/Rscript --rust-fit-bin rust_umap/target/release/fit_csv --rust-bench-bin rust_umap/target/release/bench_fit_csv --skip-rust-build --gate-config benchmarks/gate_thresholds.json --output-json reports/release-prep-regression-2026-04-01-current.artifacts/ann-e2e-smoke.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/ann-e2e-smoke.json",
+      "returncode": 0,
+      "gate_config_forwarded": true,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "umap\": {\n              \"procrustes_disparity\": 0.07047840827923094,\n              \"knn_overlap_at_15\": 0.5730521382542477\n            }\n          }\n        }\n      },\n      \"digits\": {\n        \"runs\": {\n          \"python_umap_learn\": {\n            \"elapsed_mean_sec\": 5.766825988001074,\n            \"elapsed_std_sec\": 0.0,\n            \"max_rss_mean_mb\": 310.03515625,\n            \"max_rss_std_mb\": 0.0,\n            \"elapsed_samples_sec\": [\n              5.766825988001074\n            ],\n            \"max_rss_samples_mb\": [\n              310.03515625\n            ]\n          },\n          \"rust_umap\": {\n            \"elapsed_mean_sec\": 0.36895737699524034,\n            \"elapsed_std_sec\": 0.0,\n            \"max_rss_mean_mb\": 7.25,\n            \"max_rss_std_mb\": 0.0,\n            \"elapsed_samples_sec\": [\n              0.36895737699524034\n            ],\n            \"max_rss_samples_mb\": [\n              7.25\n            ]\n          }\n        },\n        \"consistency\": {\n          \"sample_size_for_consistency\": 1200,\n          \"trustworthiness_at_15\": {\n            \"python_umap_learn\": 0.9655282733880864,\n            \"rust_umap\": 0.9634924950438969\n          },\n          \"original_knn_recall_at_15\": {\n            \"python_umap_learn\": 0.464444444444444,\n            \"rust_umap\": 0.4663888888888878\n          },\n          \"pairwise\": {\n            \"python_umap_learn__vs__rust_umap\": {\n              \"procrustes_disparity\": 0.712777871367416,\n              \"knn_overlap_at_15\": 0.6892777777777767\n            }\n          }\n        }\n      }\n    },\n    \"config\": {\n      \"seed\": 42,\n      \"warmup\": 0,\n      \"repeats\": 1,\n      \"sample_cap\": 1200,\n      \"thread_env\": {\n        \"OMP_NUM_THREADS\": \"1\",\n        \"OPENBLAS_NUM_THREADS\": \"1\",\n        \"MKL_NUM_THREADS\": \"1\",\n        \"BLIS_NUM_THREADS\": \"1\",\n        \"NUMBA_NUM_THREADS\": \"1\",\n        \"VECLIB_MAXIMUM_THREADS\": \"1\",\n        \"NUMEXPR_NUM_THREADS\": \"1\",\n        \"PYTHONHASHSEED\": \"0\"\n      },\n      \"timing_mode\": \"e2e_default_ann\"\n    }\n  }\n}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "schema_version": 1,
+        "gate": "ann_e2e_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "thresholds": {
+          "sample_cap": 1200,
+          "trust_gap": 0.03,
+          "recall_gap": 0.08,
+          "pairwise_min_overlap": 0.35
+        },
+        "failures": [],
+        "timestamp_unix": 1775050571,
+        "details": {
+          "impls": [
+            "python_umap_learn",
+            "rust_umap"
+          ],
+          "datasets": {
+            "breast_cancer": {
+              "runs": {
+                "python_umap_learn": {
+                  "elapsed_mean_sec": 4.7770290190019296,
+                  "elapsed_std_sec": 0.0,
+                  "max_rss_mean_mb": 285.359375,
+                  "max_rss_std_mb": 0.0,
+                  "elapsed_samples_sec": [
+                    4.7770290190019296
+                  ],
+                  "max_rss_samples_mb": [
+                    285.359375
+                  ]
+                },
+                "rust_umap": {
+                  "elapsed_mean_sec": 0.11333820800064132,
+                  "elapsed_std_sec": 0.0,
+                  "max_rss_mean_mb": 4.5,
+                  "max_rss_std_mb": 0.0,
+                  "elapsed_samples_sec": [
+                    0.11333820800064132
+                  ],
+                  "max_rss_samples_mb": [
+                    4.5
+                  ]
+                }
+              },
+              "consistency": {
+                "sample_size_for_consistency": 569,
+                "trustworthiness_at_15": {
+                  "python_umap_learn": 0.914865528925283,
+                  "rust_umap": 0.91437476797758
+                },
+                "original_knn_recall_at_15": {
+                  "python_umap_learn": 0.4080843585237268,
+                  "rust_umap": 0.4051552431165797
+                },
+                "pairwise": {
+                  "python_umap_learn__vs__rust_umap": {
+                    "procrustes_disparity": 0.07047840827923094,
+                    "knn_overlap_at_15": 0.5730521382542477
+                  }
+                }
+              }
+            },
+            "digits": {
+              "runs": {
+                "python_umap_learn": {
+                  "elapsed_mean_sec": 5.766825988001074,
+                  "elapsed_std_sec": 0.0,
+                  "max_rss_mean_mb": 310.03515625,
+                  "max_rss_std_mb": 0.0,
+                  "elapsed_samples_sec": [
+                    5.766825988001074
+                  ],
+                  "max_rss_samples_mb": [
+                    310.03515625
+                  ]
+                },
+                "rust_umap": {
+                  "elapsed_mean_sec": 0.36895737699524034,
+                  "elapsed_std_sec": 0.0,
+                  "max_rss_mean_mb": 7.25,
+                  "max_rss_std_mb": 0.0,
+                  "elapsed_samples_sec": [
+                    0.36895737699524034
+                  ],
+                  "max_rss_samples_mb": [
+                    7.25
+                  ]
+                }
+              },
+              "consistency": {
+                "sample_size_for_consistency": 1200,
+                "trustworthiness_at_15": {
+                  "python_umap_learn": 0.9655282733880864,
+                  "rust_umap": 0.9634924950438969
+                },
+                "original_knn_recall_at_15": {
+                  "python_umap_learn": 0.464444444444444,
+                  "rust_umap": 0.4663888888888878
+                },
+                "pairwise": {
+                  "python_umap_learn__vs__rust_umap": {
+                    "procrustes_disparity": 0.712777871367416,
+                    "knn_overlap_at_15": 0.6892777777777767
+                  }
+                }
+              }
+            }
+          },
+          "config": {
+            "seed": 42,
+            "warmup": 0,
+            "repeats": 1,
+            "sample_cap": 1200,
+            "thread_env": {
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "MKL_NUM_THREADS": "1",
+              "BLIS_NUM_THREADS": "1",
+              "NUMBA_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "PYTHONHASHSEED": "0"
+            },
+            "timing_mode": "e2e_default_ann"
+          }
+        }
+      }
+    },
+    {
+      "id": "consistency_smoke",
+      "pass": true,
+      "elapsed_sec": 11.076332059994456,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_consistency_smoke.py --python-bin /home/shenshang/miniforge3/envs/umap_bench/bin/python --rscript-bin /home/shenshang/miniforge3/envs/umap_bench/bin/Rscript --rust-fit-bin rust_umap/target/release/fit_csv --rust-bench-bin rust_umap/target/release/bench_fit_csv --skip-rust-build --require-r --gate-config benchmarks/gate_thresholds.json --output-json reports/release-prep-regression-2026-04-01-current.artifacts/consistency-smoke.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/consistency-smoke.json",
+      "returncode": 0,
+      "gate_config_forwarded": true,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "  }\n      },\n      \"digits\": {\n        \"runs\": {\n          \"python_umap_learn\": {\n            \"fit_mean_sec\": 1.7226904050039593,\n            \"fit_std_sec\": 0.0,\n            \"process_max_rss_mb\": 280.0625\n          },\n          \"r_uwot\": {\n            \"fit_mean_sec\": 0.684,\n            \"fit_std_sec\": 0.0,\n            \"process_max_rss_mb\": 194.80859375\n          },\n          \"rust_umap\": {\n            \"fit_mean_sec\": 0.309339785,\n            \"fit_std_sec\": 0.0,\n            \"process_max_rss_mb\": 7.125\n          }\n        },\n        \"consistency\": {\n          \"sample_size_for_consistency\": 1500,\n          \"trustworthiness_at_15\": {\n            \"python_umap_learn\": 0.970597216580155,\n            \"r_uwot\": 0.9679215827879335,\n            \"rust_umap\": 0.965140540133905\n          },\n          \"original_knn_recall_at_15\": {\n            \"python_umap_learn\": 0.44719999999999965,\n            \"r_uwot\": 0.44911111111111063,\n            \"rust_umap\": 0.44808888888888887\n          },\n          \"pairwise\": {\n            \"python_umap_learn__vs__r_uwot\": {\n              \"procrustes_disparity\": 0.8743407572419621,\n              \"knn_overlap_at_15\": 0.6293777777777769\n            },\n            \"python_umap_learn__vs__rust_umap\": {\n              \"procrustes_disparity\": 0.9261293966639202,\n              \"knn_overlap_at_15\": 0.6282666666666653\n            },\n            \"r_uwot__vs__rust_umap\": {\n              \"procrustes_disparity\": 0.7736410131470695,\n              \"knn_overlap_at_15\": 0.6244888888888863\n            }\n          }\n        }\n      }\n    },\n    \"config\": {\n      \"seed\": 42,\n      \"warmup\": 0,\n      \"repeats\": 1,\n      \"sample_cap\": 1500,\n      \"thread_env\": {\n        \"OMP_NUM_THREADS\": \"1\",\n        \"OPENBLAS_NUM_THREADS\": \"1\",\n        \"MKL_NUM_THREADS\": \"1\",\n        \"BLIS_NUM_THREADS\": \"1\",\n        \"NUMBA_NUM_THREADS\": \"1\",\n        \"VECLIB_MAXIMUM_THREADS\": \"1\",\n        \"NUMEXPR_NUM_THREADS\": \"1\",\n        \"PYTHONHASHSEED\": \"0\"\n      },\n      \"requires_r\": true\n    }\n  }\n}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "schema_version": 1,
+        "gate": "consistency_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "thresholds": {
+          "sample_cap": 1500,
+          "trust_gap": 0.02,
+          "recall_gap": 0.05,
+          "pairwise_min_overlap": 0.4
+        },
+        "failures": [],
+        "timestamp_unix": 1775050582,
+        "details": {
+          "impls": [
+            "python_umap_learn",
+            "r_uwot",
+            "rust_umap"
+          ],
+          "datasets": {
+            "breast_cancer": {
+              "runs": {
+                "python_umap_learn": {
+                  "fit_mean_sec": 1.40277499199874,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 277.33984375
+                },
+                "r_uwot": {
+                  "fit_mean_sec": 0.394,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 188.26953125
+                },
+                "rust_umap": {
+                  "fit_mean_sec": 0.107934453,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 4.5
+                }
+              },
+              "consistency": {
+                "sample_size_for_consistency": 569,
+                "trustworthiness_at_15": {
+                  "python_umap_learn": 0.9179103068382506,
+                  "r_uwot": 0.9145921448206158,
+                  "rust_umap": 0.916365278931184
+                },
+                "original_knn_recall_at_15": {
+                  "python_umap_learn": 0.3978910369068553,
+                  "r_uwot": 0.40562390158172346,
+                  "rust_umap": 0.4100761570005869
+                },
+                "pairwise": {
+                  "python_umap_learn__vs__r_uwot": {
+                    "procrustes_disparity": 0.18074681305882445,
+                    "knn_overlap_at_15": 0.5485647334504979
+                  },
+                  "python_umap_learn__vs__rust_umap": {
+                    "procrustes_disparity": 0.17168183087285732,
+                    "knn_overlap_at_15": 0.5439953134153491
+                  },
+                  "r_uwot__vs__rust_umap": {
+                    "procrustes_disparity": 0.010743331374387096,
+                    "knn_overlap_at_15": 0.6565905096660839
+                  }
+                }
+              }
+            },
+            "digits": {
+              "runs": {
+                "python_umap_learn": {
+                  "fit_mean_sec": 1.7226904050039593,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 280.0625
+                },
+                "r_uwot": {
+                  "fit_mean_sec": 0.684,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 194.80859375
+                },
+                "rust_umap": {
+                  "fit_mean_sec": 0.309339785,
+                  "fit_std_sec": 0.0,
+                  "process_max_rss_mb": 7.125
+                }
+              },
+              "consistency": {
+                "sample_size_for_consistency": 1500,
+                "trustworthiness_at_15": {
+                  "python_umap_learn": 0.970597216580155,
+                  "r_uwot": 0.9679215827879335,
+                  "rust_umap": 0.965140540133905
+                },
+                "original_knn_recall_at_15": {
+                  "python_umap_learn": 0.44719999999999965,
+                  "r_uwot": 0.44911111111111063,
+                  "rust_umap": 0.44808888888888887
+                },
+                "pairwise": {
+                  "python_umap_learn__vs__r_uwot": {
+                    "procrustes_disparity": 0.8743407572419621,
+                    "knn_overlap_at_15": 0.6293777777777769
+                  },
+                  "python_umap_learn__vs__rust_umap": {
+                    "procrustes_disparity": 0.9261293966639202,
+                    "knn_overlap_at_15": 0.6282666666666653
+                  },
+                  "r_uwot__vs__rust_umap": {
+                    "procrustes_disparity": 0.7736410131470695,
+                    "knn_overlap_at_15": 0.6244888888888863
+                  }
+                }
+              }
+            }
+          },
+          "config": {
+            "seed": 42,
+            "warmup": 0,
+            "repeats": 1,
+            "sample_cap": 1500,
+            "thread_env": {
+              "OMP_NUM_THREADS": "1",
+              "OPENBLAS_NUM_THREADS": "1",
+              "MKL_NUM_THREADS": "1",
+              "BLIS_NUM_THREADS": "1",
+              "NUMBA_NUM_THREADS": "1",
+              "VECLIB_MAXIMUM_THREADS": "1",
+              "NUMEXPR_NUM_THREADS": "1",
+              "PYTHONHASHSEED": "0"
+            },
+            "requires_r": true
+          }
+        }
+      }
+    },
+    {
+      "id": "no_regression_smoke:euclidean",
+      "pass": true,
+      "elapsed_sec": 6.3522056360015995,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_no_regression.py --candidate-root . --baseline-root /tmp/umap-rs-baseline-current-336287 --candidate-bin rust_umap/target/release/bench_fit_csv --baseline-bin /tmp/umap-rs-baseline-current-336287/rust_umap/target/release/bench_fit_csv --metric euclidean --gate-config benchmarks/gate_thresholds.json --output-json reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-euclidean.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-euclidean.json",
+      "returncode": 0,
+      "gate_config_forwarded": true,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "401,\n        \"fit_std_sec\": 0.001119266,\n        \"process_wall_sec\": 0.8582326659961836,\n        \"process_max_rss_mb\": 6.97265625\n      },\n      {\n        \"fit_mean_sec\": 0.216122207,\n        \"fit_std_sec\": 0.000559767,\n        \"process_wall_sec\": 0.871026262997475,\n        \"process_max_rss_mb\": 6.97265625\n      },\n      {\n        \"fit_mean_sec\": 0.213684082,\n        \"fit_std_sec\": 0.000206699,\n        \"process_wall_sec\": 0.8595622279972304,\n        \"process_max_rss_mb\": 6.97265625\n      },\n      {\n        \"fit_mean_sec\": 0.2138144,\n        \"fit_std_sec\": 0.000203373,\n        \"process_wall_sec\": 0.8592242669983534,\n        \"process_max_rss_mb\": 6.97265625\n      }\n    ],\n    \"ratios\": {\n      \"fit_mean_sec\": {\n        \"median\": 0.7987335070584727,\n        \"p75\": 0.8043599249611004,\n        \"mean\": 0.8019576789650793,\n        \"std\": 0.010058479268262227,\n        \"samples\": [\n          0.7978631006293596,\n          0.7917357423617277,\n          0.8186279593816446,\n          0.7996039134875856\n        ]\n      },\n      \"process_max_rss_mb\": {\n        \"median\": 0.9585434173669467,\n        \"p75\": 0.9669467787114846,\n        \"mean\": 0.9582633053221289,\n        \"std\": 0.008692504565368596,\n        \"samples\": [\n          0.9501400560224089,\n          0.9490196078431372,\n          0.9669467787114846,\n          0.9669467787114846\n        ]\n      }\n    },\n    \"thresholds\": {\n      \"fit_mean_sec_median\": 1.35,\n      \"fit_mean_sec_p75\": 1.4175000000000002,\n      \"process_max_rss_mb_median\": 1.25,\n      \"process_max_rss_mb_p75\": 1.3125\n    },\n    \"thread_env\": {\n      \"OMP_NUM_THREADS\": \"1\",\n      \"OPENBLAS_NUM_THREADS\": \"1\",\n      \"MKL_NUM_THREADS\": \"1\",\n      \"BLIS_NUM_THREADS\": \"1\",\n      \"NUMBA_NUM_THREADS\": \"1\",\n      \"VECLIB_MAXIMUM_THREADS\": \"1\",\n      \"NUMEXPR_NUM_THREADS\": \"1\",\n      \"PYTHONHASHSEED\": \"0\"\n    },\n    \"system\": {\n      \"python\": \"3.12.13\",\n      \"platform\": \"Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39\",\n      \"machine\": \"x86_64\"\n    }\n  }\n}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "schema_version": 1,
+        "gate": "no_regression_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "thresholds": {
+          "fit_mean_sec_median": 1.35,
+          "fit_mean_sec_p75": 1.4175000000000002,
+          "process_max_rss_mb_median": 1.25,
+          "process_max_rss_mb_p75": 1.3125
+        },
+        "failures": [],
+        "timestamp_unix": 1775050589,
+        "details": {
+          "metric": "euclidean",
+          "paired_runs": 4,
+          "paired_order": [
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ],
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ]
+          ],
+          "candidate": [
+            {
+              "fit_mean_sec": 0.170506856,
+              "fit_std_sec": 9.0248e-05,
+              "process_wall_sec": 0.6863540060003288,
+              "process_max_rss_mb": 6.625
+            },
+            {
+              "fit_mean_sec": 0.171111676,
+              "fit_std_sec": 0.001235445,
+              "process_wall_sec": 0.6949170259977109,
+              "process_max_rss_mb": 6.6171875
+            },
+            {
+              "fit_mean_sec": 0.174927764,
+              "fit_std_sec": 0.003352657,
+              "process_wall_sec": 0.6986029070030781,
+              "process_max_rss_mb": 6.7421875
+            },
+            {
+              "fit_mean_sec": 0.170966831,
+              "fit_std_sec": 0.000684069,
+              "process_wall_sec": 0.6870278979986324,
+              "process_max_rss_mb": 6.7421875
+            }
+          ],
+          "baseline": [
+            {
+              "fit_mean_sec": 0.213704401,
+              "fit_std_sec": 0.001119266,
+              "process_wall_sec": 0.8582326659961836,
+              "process_max_rss_mb": 6.97265625
+            },
+            {
+              "fit_mean_sec": 0.216122207,
+              "fit_std_sec": 0.000559767,
+              "process_wall_sec": 0.871026262997475,
+              "process_max_rss_mb": 6.97265625
+            },
+            {
+              "fit_mean_sec": 0.213684082,
+              "fit_std_sec": 0.000206699,
+              "process_wall_sec": 0.8595622279972304,
+              "process_max_rss_mb": 6.97265625
+            },
+            {
+              "fit_mean_sec": 0.2138144,
+              "fit_std_sec": 0.000203373,
+              "process_wall_sec": 0.8592242669983534,
+              "process_max_rss_mb": 6.97265625
+            }
+          ],
+          "ratios": {
+            "fit_mean_sec": {
+              "median": 0.7987335070584727,
+              "p75": 0.8043599249611004,
+              "mean": 0.8019576789650793,
+              "std": 0.010058479268262227,
+              "samples": [
+                0.7978631006293596,
+                0.7917357423617277,
+                0.8186279593816446,
+                0.7996039134875856
+              ]
+            },
+            "process_max_rss_mb": {
+              "median": 0.9585434173669467,
+              "p75": 0.9669467787114846,
+              "mean": 0.9582633053221289,
+              "std": 0.008692504565368596,
+              "samples": [
+                0.9501400560224089,
+                0.9490196078431372,
+                0.9669467787114846,
+                0.9669467787114846
+              ]
+            }
+          },
+          "thresholds": {
+            "fit_mean_sec_median": 1.35,
+            "fit_mean_sec_p75": 1.4175000000000002,
+            "process_max_rss_mb_median": 1.25,
+            "process_max_rss_mb_p75": 1.3125
+          },
+          "thread_env": {
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+            "PYTHONHASHSEED": "0"
+          },
+          "system": {
+            "python": "3.12.13",
+            "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+            "machine": "x86_64"
+          }
+        }
+      }
+    },
+    {
+      "id": "no_regression_smoke:manhattan",
+      "pass": true,
+      "elapsed_sec": 6.220944828004576,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_no_regression.py --candidate-root . --baseline-root /tmp/umap-rs-baseline-current-336287 --candidate-bin rust_umap/target/release/bench_fit_csv --baseline-bin /tmp/umap-rs-baseline-current-336287/rust_umap/target/release/bench_fit_csv --metric manhattan --gate-config benchmarks/gate_thresholds.json --output-json reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-manhattan.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-manhattan.json",
+      "returncode": 0,
+      "gate_config_forwarded": true,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "6392128,\n        \"fit_std_sec\": 0.002199047,\n        \"process_wall_sec\": 0.8673666029935703,\n        \"process_max_rss_mb\": 6.97265625\n      },\n      {\n        \"fit_mean_sec\": 0.214873514,\n        \"fit_std_sec\": 0.000107844,\n        \"process_wall_sec\": 0.8640579209968564,\n        \"process_max_rss_mb\": 6.9765625\n      },\n      {\n        \"fit_mean_sec\": 0.216189844,\n        \"fit_std_sec\": 0.000936815,\n        \"process_wall_sec\": 0.868194410999422,\n        \"process_max_rss_mb\": 6.9921875\n      },\n      {\n        \"fit_mean_sec\": 0.198813583,\n        \"fit_std_sec\": 0.001445041,\n        \"process_wall_sec\": 0.8047955009969883,\n        \"process_max_rss_mb\": 6.9765625\n      }\n    ],\n    \"ratios\": {\n      \"fit_mean_sec\": {\n        \"median\": 0.7916217762625455,\n        \"p75\": 0.7935383045849307,\n        \"mean\": 0.7899888070089045,\n        \"std\": 0.00562660774683056,\n        \"samples\": [\n          0.7904876974082903,\n          0.795885652989321,\n          0.7808260225212059,\n          0.7927558551168006\n        ]\n      },\n      \"process_max_rss_mb\": {\n        \"median\": 0.9593928500851628,\n        \"p75\": 0.9675251959686451,\n        \"mean\": 0.958449232414631,\n        \"std\": 0.009173545827545225,\n        \"samples\": [\n          0.9512605042016806,\n          0.9675251959686451,\n          0.9474860335195531,\n          0.9675251959686451\n        ]\n      }\n    },\n    \"thresholds\": {\n      \"fit_mean_sec_median\": 1.35,\n      \"fit_mean_sec_p75\": 1.4175000000000002,\n      \"process_max_rss_mb_median\": 1.25,\n      \"process_max_rss_mb_p75\": 1.3125\n    },\n    \"thread_env\": {\n      \"OMP_NUM_THREADS\": \"1\",\n      \"OPENBLAS_NUM_THREADS\": \"1\",\n      \"MKL_NUM_THREADS\": \"1\",\n      \"BLIS_NUM_THREADS\": \"1\",\n      \"NUMBA_NUM_THREADS\": \"1\",\n      \"VECLIB_MAXIMUM_THREADS\": \"1\",\n      \"NUMEXPR_NUM_THREADS\": \"1\",\n      \"PYTHONHASHSEED\": \"0\"\n    },\n    \"system\": {\n      \"python\": \"3.12.13\",\n      \"platform\": \"Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39\",\n      \"machine\": \"x86_64\"\n    }\n  }\n}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "schema_version": 1,
+        "gate": "no_regression_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "thresholds": {
+          "fit_mean_sec_median": 1.35,
+          "fit_mean_sec_p75": 1.4175000000000002,
+          "process_max_rss_mb_median": 1.25,
+          "process_max_rss_mb_p75": 1.3125
+        },
+        "failures": [],
+        "timestamp_unix": 1775050595,
+        "details": {
+          "metric": "manhattan",
+          "paired_runs": 4,
+          "paired_order": [
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ],
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ]
+          ],
+          "candidate": [
+            {
+              "fit_mean_sec": 0.171055315,
+              "fit_std_sec": 0.000220425,
+              "process_wall_sec": 0.6878564660000848,
+              "process_max_rss_mb": 6.6328125
+            },
+            {
+              "fit_mean_sec": 0.171014747,
+              "fit_std_sec": 8.3854e-05,
+              "process_wall_sec": 0.6874684219947085,
+              "process_max_rss_mb": 6.75
+            },
+            {
+              "fit_mean_sec": 0.168806656,
+              "fit_std_sec": 0.004353399,
+              "process_wall_sec": 0.6822957280019182,
+              "process_max_rss_mb": 6.625
+            },
+            {
+              "fit_mean_sec": 0.157610632,
+              "fit_std_sec": 0.000297935,
+              "process_wall_sec": 0.6365316230003373,
+              "process_max_rss_mb": 6.75
+            }
+          ],
+          "baseline": [
+            {
+              "fit_mean_sec": 0.216392128,
+              "fit_std_sec": 0.002199047,
+              "process_wall_sec": 0.8673666029935703,
+              "process_max_rss_mb": 6.97265625
+            },
+            {
+              "fit_mean_sec": 0.214873514,
+              "fit_std_sec": 0.000107844,
+              "process_wall_sec": 0.8640579209968564,
+              "process_max_rss_mb": 6.9765625
+            },
+            {
+              "fit_mean_sec": 0.216189844,
+              "fit_std_sec": 0.000936815,
+              "process_wall_sec": 0.868194410999422,
+              "process_max_rss_mb": 6.9921875
+            },
+            {
+              "fit_mean_sec": 0.198813583,
+              "fit_std_sec": 0.001445041,
+              "process_wall_sec": 0.8047955009969883,
+              "process_max_rss_mb": 6.9765625
+            }
+          ],
+          "ratios": {
+            "fit_mean_sec": {
+              "median": 0.7916217762625455,
+              "p75": 0.7935383045849307,
+              "mean": 0.7899888070089045,
+              "std": 0.00562660774683056,
+              "samples": [
+                0.7904876974082903,
+                0.795885652989321,
+                0.7808260225212059,
+                0.7927558551168006
+              ]
+            },
+            "process_max_rss_mb": {
+              "median": 0.9593928500851628,
+              "p75": 0.9675251959686451,
+              "mean": 0.958449232414631,
+              "std": 0.009173545827545225,
+              "samples": [
+                0.9512605042016806,
+                0.9675251959686451,
+                0.9474860335195531,
+                0.9675251959686451
+              ]
+            }
+          },
+          "thresholds": {
+            "fit_mean_sec_median": 1.35,
+            "fit_mean_sec_p75": 1.4175000000000002,
+            "process_max_rss_mb_median": 1.25,
+            "process_max_rss_mb_p75": 1.3125
+          },
+          "thread_env": {
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+            "PYTHONHASHSEED": "0"
+          },
+          "system": {
+            "python": "3.12.13",
+            "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+            "machine": "x86_64"
+          }
+        }
+      }
+    },
+    {
+      "id": "no_regression_smoke:cosine",
+      "pass": true,
+      "elapsed_sec": 6.2505624109981,
+      "command": "/home/shenshang/miniforge3/envs/umap_bench/bin/python benchmarks/ci_no_regression.py --candidate-root . --baseline-root /tmp/umap-rs-baseline-current-336287 --candidate-bin rust_umap/target/release/bench_fit_csv --baseline-bin /tmp/umap-rs-baseline-current-336287/rust_umap/target/release/bench_fit_csv --metric cosine --gate-config benchmarks/gate_thresholds.json --output-json reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-cosine.json",
+      "artifact_path": "reports/release-prep-regression-2026-04-01-current.artifacts/no-regression-smoke-cosine.json",
+      "returncode": 0,
+      "gate_config_forwarded": true,
+      "output_json_forwarded": true,
+      "stale_artifact_removed": false,
+      "stdout_tail": "6735,\n        \"fit_std_sec\": 0.00109805,\n        \"process_wall_sec\": 0.8481052429997362,\n        \"process_max_rss_mb\": 6.83984375\n      },\n      {\n        \"fit_mean_sec\": 0.210024035,\n        \"fit_std_sec\": 0.000205476,\n        \"process_wall_sec\": 0.8523679069985519,\n        \"process_max_rss_mb\": 6.83984375\n      },\n      {\n        \"fit_mean_sec\": 0.209548987,\n        \"fit_std_sec\": 0.000296348,\n        \"process_wall_sec\": 0.8430669739973382,\n        \"process_max_rss_mb\": 6.8359375\n      },\n      {\n        \"fit_mean_sec\": 0.209509356,\n        \"fit_std_sec\": 0.000481823,\n        \"process_wall_sec\": 0.841751177002152,\n        \"process_max_rss_mb\": 6.83984375\n      }\n    ],\n    \"ratios\": {\n      \"fit_mean_sec\": {\n        \"median\": 0.8063689828484291,\n        \"p75\": 0.813257068761469,\n        \"mean\": 0.8063109164792208,\n        \"std\": 0.007667358726391878,\n        \"samples\": [\n          0.7974103115699238,\n          0.8000936702315998,\n          0.8150953886501011,\n          0.8126442954652583\n        ]\n      },\n      \"process_max_rss_mb\": {\n        \"median\": 0.9945745288406624,\n        \"p75\": 0.9948600799543118,\n        \"mean\": 0.9901451415517663,\n        \"std\": 0.007840254310280239,\n        \"samples\": [\n          0.9942889777270132,\n          0.9948600799543118,\n          0.9765714285714285,\n          0.9948600799543118\n        ]\n      }\n    },\n    \"thresholds\": {\n      \"fit_mean_sec_median\": 1.35,\n      \"fit_mean_sec_p75\": 1.4175000000000002,\n      \"process_max_rss_mb_median\": 1.25,\n      \"process_max_rss_mb_p75\": 1.3125\n    },\n    \"thread_env\": {\n      \"OMP_NUM_THREADS\": \"1\",\n      \"OPENBLAS_NUM_THREADS\": \"1\",\n      \"MKL_NUM_THREADS\": \"1\",\n      \"BLIS_NUM_THREADS\": \"1\",\n      \"NUMBA_NUM_THREADS\": \"1\",\n      \"VECLIB_MAXIMUM_THREADS\": \"1\",\n      \"NUMEXPR_NUM_THREADS\": \"1\",\n      \"PYTHONHASHSEED\": \"0\"\n    },\n    \"system\": {\n      \"python\": \"3.12.13\",\n      \"platform\": \"Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39\",\n      \"machine\": \"x86_64\"\n    }\n  }\n}\n",
+      "stderr_tail": "",
+      "failures": [],
+      "payload": {
+        "schema_version": 1,
+        "gate": "no_regression_smoke",
+        "strict": true,
+        "overall_pass": true,
+        "thresholds": {
+          "fit_mean_sec_median": 1.35,
+          "fit_mean_sec_p75": 1.4175000000000002,
+          "process_max_rss_mb_median": 1.25,
+          "process_max_rss_mb_p75": 1.3125
+        },
+        "failures": [],
+        "timestamp_unix": 1775050601,
+        "details": {
+          "metric": "cosine",
+          "paired_runs": 4,
+          "paired_order": [
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ],
+            [
+              "baseline",
+              "candidate"
+            ],
+            [
+              "candidate",
+              "baseline"
+            ]
+          ],
+          "candidate": [
+            {
+              "fit_mean_sec": 0.168003775,
+              "fit_std_sec": 0.000260749,
+              "process_wall_sec": 0.6812313260015799,
+              "process_max_rss_mb": 6.80078125
+            },
+            {
+              "fit_mean_sec": 0.168038901,
+              "fit_std_sec": 0.000903369,
+              "process_wall_sec": 0.6818847569957143,
+              "process_max_rss_mb": 6.8046875
+            },
+            {
+              "fit_mean_sec": 0.170802413,
+              "fit_std_sec": 0.002208999,
+              "process_wall_sec": 0.6846978680041502,
+              "process_max_rss_mb": 6.67578125
+            },
+            {
+              "fit_mean_sec": 0.170256583,
+              "fit_std_sec": 0.001984779,
+              "process_wall_sec": 0.6845786299963947,
+              "process_max_rss_mb": 6.8046875
+            }
+          ],
+          "baseline": [
+            {
+              "fit_mean_sec": 0.210686735,
+              "fit_std_sec": 0.00109805,
+              "process_wall_sec": 0.8481052429997362,
+              "process_max_rss_mb": 6.83984375
+            },
+            {
+              "fit_mean_sec": 0.210024035,
+              "fit_std_sec": 0.000205476,
+              "process_wall_sec": 0.8523679069985519,
+              "process_max_rss_mb": 6.83984375
+            },
+            {
+              "fit_mean_sec": 0.209548987,
+              "fit_std_sec": 0.000296348,
+              "process_wall_sec": 0.8430669739973382,
+              "process_max_rss_mb": 6.8359375
+            },
+            {
+              "fit_mean_sec": 0.209509356,
+              "fit_std_sec": 0.000481823,
+              "process_wall_sec": 0.841751177002152,
+              "process_max_rss_mb": 6.83984375
+            }
+          ],
+          "ratios": {
+            "fit_mean_sec": {
+              "median": 0.8063689828484291,
+              "p75": 0.813257068761469,
+              "mean": 0.8063109164792208,
+              "std": 0.007667358726391878,
+              "samples": [
+                0.7974103115699238,
+                0.8000936702315998,
+                0.8150953886501011,
+                0.8126442954652583
+              ]
+            },
+            "process_max_rss_mb": {
+              "median": 0.9945745288406624,
+              "p75": 0.9948600799543118,
+              "mean": 0.9901451415517663,
+              "std": 0.007840254310280239,
+              "samples": [
+                0.9942889777270132,
+                0.9948600799543118,
+                0.9765714285714285,
+                0.9948600799543118
+              ]
+            }
+          },
+          "thresholds": {
+            "fit_mean_sec_median": 1.35,
+            "fit_mean_sec_p75": 1.4175000000000002,
+            "process_max_rss_mb_median": 1.25,
+            "process_max_rss_mb_p75": 1.3125
+          },
+          "thread_env": {
+            "OMP_NUM_THREADS": "1",
+            "OPENBLAS_NUM_THREADS": "1",
+            "MKL_NUM_THREADS": "1",
+            "BLIS_NUM_THREADS": "1",
+            "NUMBA_NUM_THREADS": "1",
+            "VECLIB_MAXIMUM_THREADS": "1",
+            "NUMEXPR_NUM_THREADS": "1",
+            "PYTHONHASHSEED": "0"
+          },
+          "system": {
+            "python": "3.12.13",
+            "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+            "machine": "x86_64"
+          }
+        }
+      }
+    }
+  ]
+}

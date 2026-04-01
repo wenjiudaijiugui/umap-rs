@@ -1,14 +1,14 @@
-use rust_umap::{Metric, UmapModel, UmapParams};
+use rust_umap::{Metric, UmapModel};
 use std::env;
 use std::error::Error;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 
+#[path = "../cli_common.rs"]
 mod common_cli;
 use common_cli::{
-    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr,
-    write_csv,
+    extract_optional_args, parse_umap_args, read_csv, read_csv_usize, read_sparse_csr, write_csv,
 };
 
 fn metric_name(metric: Metric) -> &'static str {
@@ -21,6 +21,7 @@ fn metric_name(metric: Metric) -> &'static str {
 fn usage() {
     eprintln!(
         "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine] \\\n\
+          [--ann-mode auto|exact|approximate] \\\n\
           [--learning-rate <f32>] [--min-dist <f32>] [--spread <f32>] \\\n\
           [--local-connectivity <f32>] [--set-op-mix-ratio <f32>] \\\n\
           [--repulsion-strength <f32>] [--negative-sample-rate <usize>]\n\
@@ -42,6 +43,15 @@ fn mean_std(vals: &[f64]) -> (f64, f64) {
         .sum::<f64>()
         / vals.len() as f64;
     (mean, var.sqrt())
+}
+
+fn precomputed_arg_arity(args_len: usize) -> Result<Option<(usize, usize)>, Box<dyn Error>> {
+    match args_len.saturating_sub(14) {
+        0 => Ok(None),
+        2 => Ok(Some((14, 15))),
+        1 => Err("precomputed kNN requires both knn_idx.csv and knn_dist.csv".into()),
+        _ => Err("unexpected positional arguments after repeats".into()),
+    }
 }
 
 fn read_proc_status_kb(field: &str) -> Option<u64> {
@@ -66,22 +76,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let input_path = Path::new(&args[1]);
     let output_path = Path::new(&args[2]);
 
-    let n_neighbors = args[3].parse::<usize>()?;
-    let n_components = args[4].parse::<usize>()?;
-    let n_epochs = args[5].parse::<usize>()?;
-    let seed = args[6].parse::<u64>()?;
-    let init = parse_init(&args[7])?;
-    let use_approximate_knn = parse_bool(&args[8])?;
-    let approx_knn_candidates = args[9].parse::<usize>()?;
-    let approx_knn_iters = args[10].parse::<usize>()?;
-    let approx_knn_threshold = args[11].parse::<usize>()?;
+    let parsed = parse_umap_args(&args)?;
     let warmup = args[12].parse::<usize>()?;
     let repeats = args[13].parse::<usize>()?;
 
-    let precomputed = if args.len() >= 16 {
+    let precomputed = if let Some((idx_pos, dist_pos)) = precomputed_arg_arity(args.len())? {
         Some((
-            read_csv_usize(Path::new(&args[14]))?,
-            read_csv(Path::new(&args[15]))?,
+            read_csv_usize(Path::new(&args[idx_pos]))?,
+            read_csv(Path::new(&args[dist_pos]))?,
         ))
     } else {
         None
@@ -105,25 +107,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         None
     };
 
-    let mut params = UmapParams {
-        n_neighbors,
-        n_components,
-        n_epochs: Some(n_epochs),
-        metric: optional.metric,
-        learning_rate: 1.0,
-        min_dist: 0.1,
-        spread: 1.0,
-        local_connectivity: 1.0,
-        set_op_mix_ratio: 1.0,
-        repulsion_strength: 1.0,
-        negative_sample_rate: 5,
-        random_seed: seed,
-        init,
-        use_approximate_knn,
-        approx_knn_candidates,
-        approx_knn_iters,
-        approx_knn_threshold,
-    };
+    let mut params = parsed.build_params(optional.metric, optional.ann_mode);
     optional.overrides.apply_to(&mut params)?;
 
     let total = warmup + repeats;
@@ -134,21 +118,29 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for i in 0..total {
         let mut model = UmapModel::new(params.clone());
-        let t0 = Instant::now();
-        let embedding = if let Some((ref idx, ref dist)) = precomputed {
+        let (embedding, dt) = if let Some((ref idx, ref dist)) = precomputed {
             let data = dense_data
                 .as_ref()
                 .ok_or("precomputed kNN requires dense input data")?;
-            model.fit_transform_with_knn_metric(data, idx, dist, knn_metric)?
+            let t0 = Instant::now();
+            (
+                model.fit_transform_with_knn_metric(data, idx, dist, knn_metric)?,
+                t0.elapsed().as_secs_f64(),
+            )
         } else if let Some(data) = sparse_data.as_ref() {
-            model.fit_transform_sparse_csr(data.clone())?
+            let sparse_input = data.clone();
+            let t0 = Instant::now();
+            (
+                model.fit_transform_sparse_csr(sparse_input)?,
+                t0.elapsed().as_secs_f64(),
+            )
         } else {
             let data = dense_data
                 .as_ref()
                 .ok_or("dense input data is unavailable")?;
-            model.fit_transform(data)?
+            let t0 = Instant::now();
+            (model.fit_transform(data)?, t0.elapsed().as_secs_f64())
         };
-        let dt = t0.elapsed().as_secs_f64();
         if i >= warmup {
             times.push(dt);
         }
@@ -197,10 +189,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         metric_name(params.metric),
         metric_name(knn_metric),
         precomputed.is_some(),
-        n_neighbors,
-        n_components,
-        n_epochs,
-        seed,
+        parsed.n_neighbors,
+        parsed.n_components,
+        parsed.n_epochs,
+        parsed.seed,
         warmup,
         repeats
     );
@@ -229,4 +221,32 @@ fn main() -> Result<(), Box<dyn Error>> {
     );
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::precomputed_arg_arity;
+
+    #[test]
+    fn precomputed_arg_arity_accepts_zero_or_two_extra_paths() {
+        assert_eq!(precomputed_arg_arity(14).unwrap(), None);
+        assert_eq!(precomputed_arg_arity(16).unwrap(), Some((14, 15)));
+    }
+
+    #[test]
+    fn precomputed_arg_arity_rejects_partial_or_extra_paths() {
+        let one_path = precomputed_arg_arity(15).expect_err("single precomputed path should fail");
+        assert!(
+            one_path
+                .to_string()
+                .contains("precomputed kNN requires both knn_idx.csv and knn_dist.csv")
+        );
+
+        let too_many = precomputed_arg_arity(17).expect_err("extra positional args should fail");
+        assert!(
+            too_many
+                .to_string()
+                .contains("unexpected positional arguments after repeats")
+        );
+    }
 }

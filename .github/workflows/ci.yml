@@ -23,6 +23,7 @@ jobs:
           filters: |
             core_or_benchmark:
               - 'rust_umap/**'
+              - 'rust_umap_py/**'
               - 'benchmarks/**'
               - '.github/workflows/**'
 

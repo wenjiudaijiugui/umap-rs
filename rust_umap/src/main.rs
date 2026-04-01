@@ -1,4 +1,4 @@
-use rust_umap::{InitMethod, Metric, UmapModel, UmapParams};
+use rust_umap::{UmapModel, UmapParams};
 
 fn make_toy_data(n: usize) -> Vec<Vec<f32>> {
     let mut data = Vec::with_capacity(n);
@@ -24,23 +24,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = make_toy_data(200);
 
     let params = UmapParams {
-        n_neighbors: 15,
-        n_components: 2,
         n_epochs: Some(200),
-        metric: Metric::Euclidean,
-        learning_rate: 1.0,
-        min_dist: 0.1,
-        spread: 1.0,
-        local_connectivity: 1.0,
-        set_op_mix_ratio: 1.0,
-        repulsion_strength: 1.0,
-        negative_sample_rate: 5,
-        random_seed: 42,
-        init: InitMethod::Spectral,
-        use_approximate_knn: true,
-        approx_knn_candidates: 30,
-        approx_knn_iters: 10,
-        approx_knn_threshold: 4096,
+        ..UmapParams::default()
     };
 
     let mut umap = UmapModel::new(params);

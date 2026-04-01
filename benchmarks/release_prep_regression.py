@@ -10,6 +10,7 @@ import shlex
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -290,8 +291,11 @@ def main() -> int:
     ann_script = bench_dir / "ci_ann_smoke.py"
     consistency_script = bench_dir / "ci_consistency_smoke.py"
     no_regression_script = bench_dir / "ci_no_regression.py"
-    candidate_bins = build_release_bins(candidate_root, need_fit_bin=True)
-    baseline_bins = build_release_bins(baseline_root, need_fit_bin=False)
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        candidate_future = executor.submit(build_release_bins, candidate_root, need_fit_bin=True)
+        baseline_future = executor.submit(build_release_bins, baseline_root, need_fit_bin=False)
+        candidate_bins = candidate_future.result()
+        baseline_bins = baseline_future.result()
 
     results: List[Dict[str, Any]] = []
     failures: List[str] = []

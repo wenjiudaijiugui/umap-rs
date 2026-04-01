@@ -1,9 +1,11 @@
 use numpy::ndarray::{Array2, ArrayView1};
-use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadwriteArray2};
 use numpy::PyUntypedArrayMethods;
+use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadwriteArray2};
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use rust_umap::{InitMethod, Metric, SparseCsrMatrix, UmapError, UmapModel, UmapParams};
+use rust_umap::{
+    DenseMatrix, InitMethod, Metric, SparseCsrMatrix, UmapError, UmapModel, UmapParams,
+};
 
 fn parse_metric(metric: &str) -> PyResult<Metric> {
     match metric.to_ascii_lowercase().as_str() {
@@ -45,6 +47,12 @@ fn ensure_nonzero_columns(name: &str, n_cols: usize) -> PyResult<()> {
         )));
     }
     Ok(())
+}
+
+fn array2_dims(data: &PyReadonlyArray2<'_, f32>, name: &str) -> PyResult<(usize, usize)> {
+    let dims = data.as_array().dim();
+    ensure_nonzero_columns(name, dims.1)?;
+    Ok(dims)
 }
 
 fn array2_f32_to_rows(data: &PyReadonlyArray2<'_, f32>, name: &str) -> PyResult<Vec<Vec<f32>>> {
@@ -174,6 +182,13 @@ fn rows_to_numpy<'py>(
     Ok(PyArray2::from_owned_array_bound(py, arr))
 }
 
+fn dense_to_numpy<'py>(py: Python<'py>, dense: DenseMatrix) -> PyResult<Bound<'py, PyArray2<f32>>> {
+    let (flat, n_rows, n_cols) = dense.into_raw_parts();
+    let arr = Array2::from_shape_vec((n_rows, n_cols), flat)
+        .map_err(|err| PyRuntimeError::new_err(format!("failed to build output array: {err}")))?;
+    Ok(PyArray2::from_owned_array_bound(py, arr))
+}
+
 fn copy_rows_into_out(
     rows: &[Vec<f32>],
     empty_cols: usize,
@@ -215,7 +230,38 @@ fn copy_rows_into_out(
                 "inconsistent output row width from rust_umap core",
             ));
         }
-        out_view.row_mut(i).assign(&ArrayView1::from(row.as_slice()));
+        out_view
+            .row_mut(i)
+            .assign(&ArrayView1::from(row.as_slice()));
+    }
+
+    Ok(())
+}
+
+fn copy_dense_into_out(dense: &DenseMatrix, mut out: PyReadwriteArray2<'_, f32>) -> PyResult<()> {
+    let n_rows = dense.n_rows();
+    let n_cols = dense.n_cols();
+
+    let mut out_view = out.as_array_mut();
+    if out_view.nrows() != n_rows || out_view.ncols() != n_cols {
+        return Err(PyValueError::new_err(format!(
+            "output buffer shape mismatch: expected ({n_rows}, {n_cols}), got ({}, {})",
+            out_view.nrows(),
+            out_view.ncols()
+        )));
+    }
+
+    if let Some(out_slice) = out_view.as_slice_memory_order_mut() {
+        out_slice.copy_from_slice(dense.as_slice());
+        return Ok(());
+    }
+
+    for i in 0..n_rows {
+        let start = i * n_cols;
+        let end = start + n_cols;
+        out_view
+            .row_mut(i)
+            .assign(&ArrayView1::from(&dense.as_slice()[start..end]));
     }
 
     Ok(())
@@ -296,8 +342,15 @@ impl PyUmapCore {
     }
 
     fn fit(&mut self, py: Python<'_>, data: PyReadonlyArray2<'_, f32>) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&data, "data")?;
-        py.allow_threads(|| self.inner.fit(&rows)).map_err(map_umap_error)
+        let (n_rows, n_cols) = array2_dims(&data, "data")?;
+        if let Ok(slice) = data.as_slice() {
+            py.allow_threads(|| self.inner.fit_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)
+        } else {
+            let rows = array2_f32_to_rows(&data, "data")?;
+            py.allow_threads(|| self.inner.fit(&rows))
+                .map_err(map_umap_error)
+        }
     }
 
     fn fit_sparse_csr(
@@ -318,11 +371,19 @@ impl PyUmapCore {
         py: Python<'py>,
         data: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&data, "data")?;
-        let embedding = py
-            .allow_threads(|| self.inner.fit_transform(&rows))
-            .map_err(map_umap_error)?;
-        rows_to_numpy(py, embedding, self.inner.params().n_components)
+        let (n_rows, n_cols) = array2_dims(&data, "data")?;
+        if let Ok(slice) = data.as_slice() {
+            let embedding = py
+                .allow_threads(|| self.inner.fit_transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            dense_to_numpy(py, embedding)
+        } else {
+            let rows = array2_f32_to_rows(&data, "data")?;
+            let embedding = py
+                .allow_threads(|| self.inner.fit_transform(&rows))
+                .map_err(map_umap_error)?;
+            rows_to_numpy(py, embedding, self.inner.params().n_components)
+        }
     }
 
     fn fit_transform_into<'py>(
@@ -331,11 +392,19 @@ impl PyUmapCore {
         data: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&data, "data")?;
-        let embedding = py
-            .allow_threads(|| self.inner.fit_transform(&rows))
-            .map_err(map_umap_error)?;
-        copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+        let (n_rows, n_cols) = array2_dims(&data, "data")?;
+        if let Ok(slice) = data.as_slice() {
+            let embedding = py
+                .allow_threads(|| self.inner.fit_transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            copy_dense_into_out(&embedding, out)
+        } else {
+            let rows = array2_f32_to_rows(&data, "data")?;
+            let embedding = py
+                .allow_threads(|| self.inner.fit_transform(&rows))
+                .map_err(map_umap_error)?;
+            copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+        }
     }
 
     fn fit_transform_sparse_csr<'py>(
@@ -467,11 +536,19 @@ impl PyUmapCore {
         py: Python<'py>,
         query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&query, "query")?;
-        let out = py
-            .allow_threads(|| self.inner.transform(&rows))
-            .map_err(map_umap_error)?;
-        rows_to_numpy(py, out, self.inner.params().n_components)
+        let (n_rows, n_cols) = array2_dims(&query, "query")?;
+        if let Ok(slice) = query.as_slice() {
+            let out = py
+                .allow_threads(|| self.inner.transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            dense_to_numpy(py, out)
+        } else {
+            let rows = array2_f32_to_rows(&query, "query")?;
+            let out = py
+                .allow_threads(|| self.inner.transform(&rows))
+                .map_err(map_umap_error)?;
+            rows_to_numpy(py, out, self.inner.params().n_components)
+        }
     }
 
     fn transform_into<'py>(
@@ -480,11 +557,19 @@ impl PyUmapCore {
         query: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&query, "query")?;
-        let transformed = py
-            .allow_threads(|| self.inner.transform(&rows))
-            .map_err(map_umap_error)?;
-        copy_rows_into_out(&transformed, self.inner.params().n_components, out)
+        let (n_rows, n_cols) = array2_dims(&query, "query")?;
+        if let Ok(slice) = query.as_slice() {
+            let transformed = py
+                .allow_threads(|| self.inner.transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            copy_dense_into_out(&transformed, out)
+        } else {
+            let rows = array2_f32_to_rows(&query, "query")?;
+            let transformed = py
+                .allow_threads(|| self.inner.transform(&rows))
+                .map_err(map_umap_error)?;
+            copy_rows_into_out(&transformed, self.inner.params().n_components, out)
+        }
     }
 
     fn inverse_transform<'py>(
@@ -492,11 +577,19 @@ impl PyUmapCore {
         py: Python<'py>,
         embedded_query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
-        let out = py
-            .allow_threads(|| self.inner.inverse_transform(&rows))
-            .map_err(map_umap_error)?;
-        rows_to_numpy(py, out, 0)
+        let (n_rows, n_cols) = array2_dims(&embedded_query, "embedded_query")?;
+        if let Ok(slice) = embedded_query.as_slice() {
+            let out = py
+                .allow_threads(|| self.inner.inverse_transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            dense_to_numpy(py, out)
+        } else {
+            let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
+            let out = py
+                .allow_threads(|| self.inner.inverse_transform(&rows))
+                .map_err(map_umap_error)?;
+            rows_to_numpy(py, out, self.inner.n_features().unwrap_or(0))
+        }
     }
 
     fn inverse_transform_into<'py>(
@@ -505,11 +598,19 @@ impl PyUmapCore {
         embedded_query: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
-        let reconstructed = py
-            .allow_threads(|| self.inner.inverse_transform(&rows))
-            .map_err(map_umap_error)?;
-        copy_rows_into_out(&reconstructed, 0, out)
+        let (n_rows, n_cols) = array2_dims(&embedded_query, "embedded_query")?;
+        if let Ok(slice) = embedded_query.as_slice() {
+            let reconstructed = py
+                .allow_threads(|| self.inner.inverse_transform_dense(slice, n_rows, n_cols))
+                .map_err(map_umap_error)?;
+            copy_dense_into_out(&reconstructed, out)
+        } else {
+            let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
+            let reconstructed = py
+                .allow_threads(|| self.inner.inverse_transform(&rows))
+                .map_err(map_umap_error)?;
+            copy_rows_into_out(&reconstructed, self.inner.n_features().unwrap_or(0), out)
+        }
     }
 
     #[getter]
@@ -520,6 +621,11 @@ impl PyUmapCore {
     #[getter]
     fn n_neighbors(&self) -> usize {
         self.inner.params().n_neighbors
+    }
+
+    #[getter]
+    fn n_features(&self) -> Option<usize> {
+        self.inner.n_features()
     }
 }
 
