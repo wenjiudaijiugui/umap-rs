@@ -2,7 +2,7 @@
 
 Status: TEMP  
 Created: 2026-04-01  
-Scope: `/home/shenshang/paper_reproduction/umap-rs`
+Scope: `.`
 
 ## 1. 并行计划总览（按任务并行，不按时间）
 

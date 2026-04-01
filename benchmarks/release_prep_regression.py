@@ -13,6 +13,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:
+    from .rust_build_utils import ReleaseBins, build_release_bins
+except ImportError:  # pragma: no cover - direct script execution path
+    from rust_build_utils import ReleaseBins, build_release_bins
+
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_GATE_CONFIG = ROOT / "benchmarks" / "gate_thresholds.json"
@@ -152,15 +157,40 @@ def _extract_json_payload(text: str) -> Optional[Dict[str, Any]]:
 
 
 def _result_pass(payload: Optional[Dict[str, Any]], returncode: int) -> bool:
+    if returncode != 0:
+        return False
     if payload is not None and isinstance(payload.get("overall_pass"), bool):
         return bool(payload["overall_pass"])
-    return returncode == 0
+    return True
 
 
 def _write_payload_if_needed(path: Path, payload: Optional[Dict[str, Any]]) -> None:
     if payload is None:
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _path_for_command(path: Path, cwd: Path) -> str:
+    resolved = path.resolve()
+    try:
+        rel = resolved.relative_to(cwd.resolve())
+    except ValueError:
+        return str(resolved)
+    rel_str = str(rel)
+    return rel_str if rel_str else "."
+
+
+def _candidate_rust_bin_args(candidate_bins: ReleaseBins, cwd: Path) -> List[str]:
+    if candidate_bins.fit_csv is None:
+        raise RuntimeError("candidate fit_csv binary is required for skip-rust-build gates")
+    return [
+        "--rust-fit-bin",
+        _path_for_command(candidate_bins.fit_csv, cwd),
+        "--rust-bench-bin",
+        _path_for_command(candidate_bins.bench_fit_csv, cwd),
+        "--skip-rust-build",
+    ]
 
 
 def _run_gate(
@@ -173,16 +203,22 @@ def _run_gate(
     gate_config: Optional[Path],
     help_cache: Dict[str, str],
 ) -> Dict[str, Any]:
-    command = [python_bin, str(script_path), *script_args]
+    command = [python_bin, _path_for_command(script_path, cwd), *script_args]
     gate_config_forwarded = False
     output_json_forwarded = False
 
     if gate_config is not None and _supports_option(python_bin, script_path, "--gate-config", help_cache):
-        command.extend(["--gate-config", str(gate_config)])
+        command.extend(["--gate-config", _path_for_command(gate_config, cwd)])
         gate_config_forwarded = True
 
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    stale_artifact_removed = False
+    if artifact_path.exists():
+        artifact_path.unlink()
+        stale_artifact_removed = True
+
     if _supports_option(python_bin, script_path, "--output-json", help_cache):
-        command.extend(["--output-json", str(artifact_path)])
+        command.extend(["--output-json", _path_for_command(artifact_path, cwd)])
         output_json_forwarded = True
 
     t0 = time.perf_counter()
@@ -196,7 +232,7 @@ def _run_gate(
     elapsed = time.perf_counter() - t0
 
     payload: Optional[Dict[str, Any]] = None
-    if artifact_path.exists():
+    if output_json_forwarded and artifact_path.exists():
         try:
             payload = json.loads(artifact_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
@@ -219,10 +255,11 @@ def _run_gate(
         "pass": passed,
         "elapsed_sec": elapsed,
         "command": " ".join(shlex.quote(tok) for tok in command),
-        "artifact_path": str(artifact_path),
+        "artifact_path": _path_for_command(artifact_path, cwd),
         "returncode": proc.returncode,
         "gate_config_forwarded": gate_config_forwarded,
         "output_json_forwarded": output_json_forwarded,
+        "stale_artifact_removed": stale_artifact_removed,
         "stdout_tail": _tail(proc.stdout),
         "stderr_tail": _tail(proc.stderr),
         "failures": failures,
@@ -239,6 +276,7 @@ def main() -> int:
     metrics = _parse_metrics(args.metrics)
     _ensure_paths(candidate_root, baseline_root)
     _ensure_gate_config(gate_config)
+    assert baseline_root is not None
 
     output_json = Path(args.output_json).resolve()
     output_json.parent.mkdir(parents=True, exist_ok=True)
@@ -252,6 +290,8 @@ def main() -> int:
     ann_script = bench_dir / "ci_ann_smoke.py"
     consistency_script = bench_dir / "ci_consistency_smoke.py"
     no_regression_script = bench_dir / "ci_no_regression.py"
+    candidate_bins = build_release_bins(candidate_root, need_fit_bin=True)
+    baseline_bins = build_release_bins(baseline_root, need_fit_bin=False)
 
     results: List[Dict[str, Any]] = []
     failures: List[str] = []
@@ -261,7 +301,10 @@ def main() -> int:
             gate_id="wave1_smoke",
             python_bin=args.python_bin,
             script_path=wave1_script,
-            script_args=["--manifest-path", str(candidate_root / "rust_umap" / "Cargo.toml")],
+            script_args=[
+                "--manifest-path",
+                _path_for_command(candidate_root / "rust_umap" / "Cargo.toml", candidate_root),
+            ],
             cwd=candidate_root,
             artifact_path=artifacts_dir / "wave1-smoke.json",
             gate_config=gate_config,
@@ -279,6 +322,7 @@ def main() -> int:
                 args.python_bin,
                 "--rscript-bin",
                 args.rscript_bin,
+                *_candidate_rust_bin_args(candidate_bins, candidate_root),
             ],
             cwd=candidate_root,
             artifact_path=artifacts_dir / "ann-e2e-smoke.json",
@@ -292,6 +336,7 @@ def main() -> int:
         args.python_bin,
         "--rscript-bin",
         args.rscript_bin,
+        *_candidate_rust_bin_args(candidate_bins, candidate_root),
     ]
     if args.require_r:
         consistency_args.append("--require-r")
@@ -316,9 +361,13 @@ def main() -> int:
                 script_path=no_regression_script,
                 script_args=[
                     "--candidate-root",
-                    str(candidate_root),
+                    _path_for_command(candidate_root, candidate_root),
                     "--baseline-root",
-                    str(baseline_root),
+                    _path_for_command(baseline_root, candidate_root),
+                    "--candidate-bin",
+                    _path_for_command(candidate_bins.bench_fit_csv, candidate_root),
+                    "--baseline-bin",
+                    _path_for_command(baseline_bins.bench_fit_csv, candidate_root),
                     "--metric",
                     metric,
                 ],
@@ -336,16 +385,30 @@ def main() -> int:
             failures.extend(result["failures"])
 
     summary = {
+        "schema_version": 1,
         "gate": "release_prep_regression",
         "strict": True,
         "overall_pass": overall_pass,
         "timestamp_unix": int(time.time()),
-        "candidate_root": str(candidate_root),
-        "baseline_root": str(baseline_root) if baseline_root is not None else "",
+        "candidate_root": _path_for_command(candidate_root, candidate_root),
+        "baseline_root": _path_for_command(baseline_root, candidate_root)
+        if baseline_root is not None
+        else "",
         "metrics": metrics,
-        "gate_config": str(gate_config) if gate_config is not None else "",
+        "gate_config": _path_for_command(gate_config, candidate_root) if gate_config is not None else "",
         "require_r": args.require_r,
-        "artifacts_dir": str(artifacts_dir),
+        "artifacts_dir": _path_for_command(artifacts_dir, candidate_root),
+        "build_reuse": {
+            "candidate_fit_csv": _path_for_command(candidate_bins.fit_csv, candidate_root)
+            if candidate_bins.fit_csv is not None
+            else "",
+            "candidate_bench_fit_csv": _path_for_command(
+                candidate_bins.bench_fit_csv, candidate_root
+            ),
+            "baseline_bench_fit_csv": _path_for_command(
+                baseline_bins.bench_fit_csv, candidate_root
+            ),
+        },
         "failures": failures,
         "results": results,
     }

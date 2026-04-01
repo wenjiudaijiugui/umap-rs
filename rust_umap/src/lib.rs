@@ -739,19 +739,19 @@ fn validate_params(
             "n_components must be >= 1".to_string(),
         ));
     }
-    if params.learning_rate <= 0.0 {
+    if !params.learning_rate.is_finite() || params.learning_rate <= 0.0 {
         return Err(UmapError::InvalidParameter(
-            "learning_rate must be > 0".to_string(),
+            "learning_rate must be finite and > 0".to_string(),
         ));
     }
-    if params.min_dist < 0.0 {
+    if !params.min_dist.is_finite() || params.min_dist < 0.0 {
         return Err(UmapError::InvalidParameter(
-            "min_dist must be >= 0".to_string(),
+            "min_dist must be finite and >= 0".to_string(),
         ));
     }
-    if params.spread <= 0.0 {
+    if !params.spread.is_finite() || params.spread <= 0.0 {
         return Err(UmapError::InvalidParameter(
-            "spread must be > 0".to_string(),
+            "spread must be finite and > 0".to_string(),
         ));
     }
     if params.min_dist > params.spread {
@@ -759,14 +759,14 @@ fn validate_params(
             "min_dist must be <= spread".to_string(),
         ));
     }
-    if !(0.0..=1.0).contains(&params.set_op_mix_ratio) {
+    if !params.set_op_mix_ratio.is_finite() || !(0.0..=1.0).contains(&params.set_op_mix_ratio) {
         return Err(UmapError::InvalidParameter(
-            "set_op_mix_ratio must be in [0, 1]".to_string(),
+            "set_op_mix_ratio must be finite and in [0, 1]".to_string(),
         ));
     }
-    if params.repulsion_strength < 0.0 {
+    if !params.repulsion_strength.is_finite() || params.repulsion_strength < 0.0 {
         return Err(UmapError::InvalidParameter(
-            "repulsion_strength must be >= 0".to_string(),
+            "repulsion_strength must be finite and >= 0".to_string(),
         ));
     }
     if params.negative_sample_rate == 0 {
@@ -774,9 +774,9 @@ fn validate_params(
             "negative_sample_rate must be >= 1".to_string(),
         ));
     }
-    if params.local_connectivity < 0.0 {
+    if !params.local_connectivity.is_finite() || params.local_connectivity < 0.0 {
         return Err(UmapError::InvalidParameter(
-            "local_connectivity must be >= 0".to_string(),
+            "local_connectivity must be finite and >= 0".to_string(),
         ));
     }
     if params.approx_knn_candidates == 0 {
@@ -3457,6 +3457,30 @@ mod tests {
         assert!(matches!(err, UmapError::InvalidParameter(_)));
         assert!(
             err.to_string().contains("non-finite"),
+            "unexpected error message: {err}"
+        );
+    }
+
+    #[test]
+    fn fit_rejects_non_finite_hyperparameters() {
+        let data = synthetic_data(32, 6);
+        let mut params = UmapParams {
+            n_neighbors: 8,
+            n_components: 2,
+            n_epochs: Some(20),
+            init: InitMethod::Random,
+            random_seed: 77,
+            ..UmapParams::default()
+        };
+        params.learning_rate = f32::INFINITY;
+
+        let mut model = UmapModel::new(params);
+        let err = model
+            .fit_transform(&data)
+            .expect_err("non-finite hyperparameter must be rejected");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(
+            err.to_string().contains("learning_rate must be finite"),
             "unexpected error message: {err}"
         );
     }

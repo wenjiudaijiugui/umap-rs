@@ -124,6 +124,12 @@ cargo run --release --bin fit_csv -- \
   --knn-metric cosine
 ```
 
+Precomputed-kNN contract (strict validation):
+
+- each row length must be `>= n_neighbors` and index/dist row lengths must match
+- indices must be in-range and unique within each row (duplicate indices are rejected)
+- distances must be finite, `>= 0`, and non-decreasing within each row
+
 To benchmark repeated fits:
 
 ```bash

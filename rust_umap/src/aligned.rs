@@ -536,7 +536,7 @@ fn cosine_decay_alignment_lr(base: f32, epoch: usize, total_epochs: usize) -> f3
         return base;
     }
     let progress = epoch as f32 / (total_epochs - 1) as f32;
-    let factor = 0.05 + 0.95 * 0.5 * (1.0 + (std::f32::consts::PI * (1.0 - progress)).cos());
+    let factor = 0.05 + 0.95 * 0.5 * (1.0 + (std::f32::consts::PI * progress).cos());
     base * factor
 }
 
@@ -829,6 +829,32 @@ mod tests {
         assert!(
             gap_after <= gap_before + 1e-6,
             "warm-start should not increase identity gap: before={gap_before}, after={gap_after}"
+        );
+    }
+
+    #[test]
+    fn cosine_decay_alignment_lr_is_monotonic_non_increasing() {
+        let base = 0.8_f32;
+        let epochs = 15_usize;
+        let mut prev = f32::INFINITY;
+        for epoch in 0..epochs {
+            let lr = cosine_decay_alignment_lr(base, epoch, epochs);
+            assert!(
+                lr <= prev + 1e-8,
+                "alignment lr must be non-increasing, epoch={epoch}, prev={prev}, current={lr}"
+            );
+            prev = lr;
+        }
+        let start = cosine_decay_alignment_lr(base, 0, epochs);
+        let end = cosine_decay_alignment_lr(base, epochs - 1, epochs);
+        assert!(
+            (start - base).abs() < 1e-7,
+            "start LR should be base: {start} vs {base}"
+        );
+        assert!(
+            (end - base * 0.05).abs() < 1e-6,
+            "end LR should decay to 5% of base: {end} vs {}",
+            base * 0.05
         );
     }
 

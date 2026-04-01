@@ -31,6 +31,7 @@ def gate_report(
     details: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
+        "schema_version": 1,
         "gate": gate,
         "strict": strict,
         "overall_pass": overall_pass,

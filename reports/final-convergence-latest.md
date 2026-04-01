@@ -8,12 +8,12 @@
 
 | Gate | Pass | Return Code | Artifact |
 |---|---:|---:|---|
-| `wave1_smoke` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/wave1-smoke.json` |
-| `ann_e2e_smoke` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/ann-e2e-smoke.json` |
-| `consistency_smoke` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/consistency-smoke.json` |
-| `no_regression_smoke:euclidean` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-euclidean.json` |
-| `no_regression_smoke:manhattan` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-manhattan.json` |
-| `no_regression_smoke:cosine` | true | 0 | `/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-cosine.json` |
+| `wave1_smoke` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/wave1-smoke.json` |
+| `ann_e2e_smoke` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/ann-e2e-smoke.json` |
+| `consistency_smoke` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/consistency-smoke.json` |
+| `no_regression_smoke:euclidean` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-euclidean.json` |
+| `no_regression_smoke:manhattan` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-manhattan.json` |
+| `no_regression_smoke:cosine` | true | 0 | `benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-cosine.json` |
 
 ## 2) Key Inputs (L1/L2/L3/L6)
 

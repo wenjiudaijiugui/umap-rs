@@ -39,43 +39,43 @@
   "release_prep_run": {
     "command": "mamba run -n umap_bench python benchmarks/release_prep_regression.py --candidate-root \"$(pwd -P)\" --baseline-root /tmp/umap-rs-baseline --python-bin python --rscript-bin Rscript --gate-config benchmarks/gate_thresholds.json --metrics euclidean,manhattan,cosine --output-json benchmarks/release-prep-regression.final.json",
     "report_json": "benchmarks/release-prep-regression.final.json",
-    "artifacts_dir": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts",
+    "artifacts_dir": "benchmarks/release-prep-regression.final.artifacts",
     "results": [
       {
         "id": "wave1_smoke",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/wave1-smoke.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/wave1-smoke.json"
       },
       {
         "id": "ann_e2e_smoke",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/ann-e2e-smoke.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/ann-e2e-smoke.json"
       },
       {
         "id": "consistency_smoke",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/consistency-smoke.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/consistency-smoke.json"
       },
       {
         "id": "no_regression_smoke:euclidean",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-euclidean.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-euclidean.json"
       },
       {
         "id": "no_regression_smoke:manhattan",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-manhattan.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-manhattan.json"
       },
       {
         "id": "no_regression_smoke:cosine",
         "pass": true,
         "returncode": 0,
-        "artifact_path": "/home/shenshang/paper_reproduction/umap-rs/benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-cosine.json"
+        "artifact_path": "benchmarks/release-prep-regression.final.artifacts/no-regression-smoke-cosine.json"
       }
     ],
     "no_regression_ratio_summary": {

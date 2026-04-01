@@ -18,6 +18,7 @@ BENCH_DIR = ROOT / "benchmarks"
 sys.path.insert(0, str(BENCH_DIR))
 
 from gate_config import THRESHOLDS_PATH, emit_report, gate_report, load_gate_config
+from rust_build_utils import build_release_bins
 
 THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
@@ -142,6 +143,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tail-slack", type=float, default=None)
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
+    p.add_argument(
+        "--candidate-bin",
+        default="",
+        help="prebuilt candidate bench_fit_csv path (skip candidate build when set)",
+    )
+    p.add_argument(
+        "--baseline-bin",
+        default="",
+        help="prebuilt baseline bench_fit_csv path (skip baseline build when set)",
+    )
     p.add_argument("--output-json", default=None)
     args = p.parse_args()
     config = load_gate_config("no_regression_smoke", args.gate_config)
@@ -163,12 +174,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_release(root: Path) -> Path:
-    subprocess.run(
-        ["cargo", "build", "--release", "--bin", "fit_csv", "--bin", "bench_fit_csv"],
-        cwd=root / "rust_umap",
-        check=True,
-    )
-    return root / "rust_umap" / "target" / "release" / "bench_fit_csv"
+    return build_release_bins(root, need_fit_bin=False).bench_fit_csv
 
 
 def generate_dataset(seed: int, n_samples: int = 1400, n_features: int = 24) -> np.ndarray:
@@ -281,8 +287,12 @@ def main() -> None:
     candidate_root = Path(args.candidate_root).resolve()
     baseline_root = Path(args.baseline_root).resolve()
 
-    candidate_bin = build_release(candidate_root)
-    baseline_bin = build_release(baseline_root)
+    candidate_bin = Path(args.candidate_bin).resolve() if args.candidate_bin else build_release(candidate_root)
+    baseline_bin = Path(args.baseline_bin).resolve() if args.baseline_bin else build_release(baseline_root)
+    if not candidate_bin.exists():
+        raise SystemExit(f"candidate binary not found: {candidate_bin}")
+    if not baseline_bin.exists():
+        raise SystemExit(f"baseline binary not found: {baseline_bin}")
 
     rng = np.random.default_rng(args.seed ^ 0x5EEDC0DE)
 

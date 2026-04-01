@@ -14,6 +14,7 @@ BENCH_DIR = ROOT / "benchmarks"
 sys.path.insert(0, str(BENCH_DIR))
 
 from gate_config import THRESHOLDS_PATH, emit_report, gate_report, load_gate_config
+from rust_bin_overrides import configure_rust_bins
 
 DATASETS = {
     "breast_cancer": "breast_cancer",
@@ -53,6 +54,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--trust-gap", type=float, default=None)
     parser.add_argument("--recall-gap", type=float, default=None)
     parser.add_argument("--pairwise-min-overlap", type=float, default=None)
+    parser.add_argument("--rust-fit-bin", default=None)
+    parser.add_argument("--rust-bench-bin", default=None)
+    parser.add_argument("--skip-rust-build", action="store_true")
     parser.add_argument("--output-json", default=None)
     args = parser.parse_args()
     config = load_gate_config("ann_e2e_smoke", args.gate_config)
@@ -143,11 +147,15 @@ def main() -> None:
 
     fair.PYTHON_BIN = Path(args.python_bin)
     fair.RSCRIPT_BIN = Path(args.rscript_bin) if args.rscript_bin else Path("Rscript")
+    configure_rust_bins(
+        fair,
+        rust_fit_bin=args.rust_fit_bin,
+        rust_bench_bin=args.rust_bench_bin,
+        skip_rust_build=args.skip_rust_build,
+    )
 
     # Explicitly keep this gate lightweight and deterministic.
     impls = ["python_umap_learn", "rust_umap"]
-
-    fair.build_rust_binaries()
 
     all_failures: List[str] = []
     summary: Dict[str, object] = {

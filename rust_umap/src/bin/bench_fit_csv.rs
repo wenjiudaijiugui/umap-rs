@@ -124,7 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         approx_knn_iters,
         approx_knn_threshold,
     };
-    optional.overrides.apply_to(&mut params);
+    optional.overrides.apply_to(&mut params)?;
 
     let total = warmup + repeats;
     let mut times = Vec::with_capacity(repeats);

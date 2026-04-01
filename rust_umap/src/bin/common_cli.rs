@@ -24,28 +24,43 @@ pub struct UmapParamOverrides {
 }
 
 impl UmapParamOverrides {
-    pub fn apply_to(self, params: &mut UmapParams) {
+    pub fn apply_to(self, params: &mut UmapParams) -> Result<(), Box<dyn Error>> {
+        fn ensure_finite(name: &str, value: f32) -> Result<(), Box<dyn Error>> {
+            if value.is_finite() {
+                Ok(())
+            } else {
+                Err(format!("{name} must be finite").into())
+            }
+        }
+
         if let Some(value) = self.learning_rate {
+            ensure_finite("--learning-rate", value)?;
             params.learning_rate = value;
         }
         if let Some(value) = self.min_dist {
+            ensure_finite("--min-dist", value)?;
             params.min_dist = value;
         }
         if let Some(value) = self.spread {
+            ensure_finite("--spread", value)?;
             params.spread = value;
         }
         if let Some(value) = self.local_connectivity {
+            ensure_finite("--local-connectivity", value)?;
             params.local_connectivity = value;
         }
         if let Some(value) = self.set_op_mix_ratio {
+            ensure_finite("--set-op-mix-ratio", value)?;
             params.set_op_mix_ratio = value;
         }
         if let Some(value) = self.repulsion_strength {
+            ensure_finite("--repulsion-strength", value)?;
             params.repulsion_strength = value;
         }
         if let Some(value) = self.negative_sample_rate {
             params.negative_sample_rate = value;
         }
+        Ok(())
     }
 }
 
@@ -65,7 +80,9 @@ where
     if index + 1 >= args.len() {
         return Err(format!("{flag} requires a value").into());
     }
-    args[index + 1].parse::<T>().map_err(|e| Box::new(e) as Box<dyn Error>)
+    args[index + 1]
+        .parse::<T>()
+        .map_err(|e| Box::new(e) as Box<dyn Error>)
 }
 
 pub fn parse_bool(s: &str) -> Result<bool, Box<dyn Error>> {
@@ -149,15 +166,13 @@ pub fn extract_optional_args(args: &mut Vec<String>) -> Result<CliOptionalArgs, 
             overrides.spread = Some(parse_flag_value(args, i, "--spread")?);
             args.drain(i..=i + 1);
         } else if args[i] == "--local-connectivity" {
-            overrides.local_connectivity =
-                Some(parse_flag_value(args, i, "--local-connectivity")?);
+            overrides.local_connectivity = Some(parse_flag_value(args, i, "--local-connectivity")?);
             args.drain(i..=i + 1);
         } else if args[i] == "--set-op-mix-ratio" {
             overrides.set_op_mix_ratio = Some(parse_flag_value(args, i, "--set-op-mix-ratio")?);
             args.drain(i..=i + 1);
         } else if args[i] == "--repulsion-strength" {
-            overrides.repulsion_strength =
-                Some(parse_flag_value(args, i, "--repulsion-strength")?);
+            overrides.repulsion_strength = Some(parse_flag_value(args, i, "--repulsion-strength")?);
             args.drain(i..=i + 1);
         } else if args[i] == "--negative-sample-rate" {
             overrides.negative_sample_rate =
@@ -369,7 +384,9 @@ mod tests {
             }
         );
 
-        let sparse = parsed.sparse_input.expect("csr flags should produce sparse input");
+        let sparse = parsed
+            .sparse_input
+            .expect("csr flags should produce sparse input");
         assert_eq!(sparse.indptr_path, "indptr.csv");
         assert_eq!(sparse.indices_path, "indices.csv");
         assert_eq!(sparse.data_path, "data.csv");
@@ -402,5 +419,17 @@ mod tests {
         ];
         let err = extract_optional_args(&mut args).expect_err("partial csr input should fail");
         assert!(err.to_string().contains("--csr-indices is required"));
+    }
+
+    #[test]
+    fn overrides_reject_non_finite_float_values() {
+        let mut params = UmapParams::default();
+        let err = UmapParamOverrides {
+            learning_rate: Some(f32::NAN),
+            ..UmapParamOverrides::default()
+        }
+        .apply_to(&mut params)
+        .expect_err("NaN override must fail");
+        assert!(err.to_string().contains("--learning-rate must be finite"));
     }
 }

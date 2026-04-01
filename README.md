@@ -220,3 +220,5 @@ Notes:
 1. `benchmarks/gate_thresholds.json` is the frozen Wave 3 gate threshold source; `--gate-config` can override it explicitly.
 2. `--require-r` forces the consistency gate to require `Rscript`.
 3. The summary JSON records per-gate commands, artifacts, exit status, and captured output tails.
+4. Gate reports include `schema_version=1`; release-prep summaries also include `schema_version=1`.
+5. Release-prep reuses prebuilt candidate/baseline binaries across sub-gates and stores repo-relative artifact paths when possible.

@@ -3,8 +3,8 @@
 ## Setup
 - n_neighbors=15, n_components=2, n_epochs=200, init=random, seed=42
 - warmup=1, repeats=5, randomized_order_per_repeat=True
-- python_bin=/home/shenshang/miniforge3/envs/umap_bench/bin/python
-- rscript_bin=/home/shenshang/miniforge3/envs/umap_bench/bin/Rscript
+- python_bin=python
+- rscript_bin=Rscript
 - groups: e2e_default_ann, algo_exact_shared_knn
 - e2e_metric=euclidean
 - algo_exact_metrics=euclidean,manhattan,cosine

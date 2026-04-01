@@ -18,6 +18,8 @@ from sklearn.manifold import trustworthiness
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
+from reporting_utils import display_executable
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH_DIR = ROOT / "benchmarks"
@@ -700,7 +702,7 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         f"- n_neighbors={N_NEIGHBORS}, n_components={N_COMPONENTS}, n_epochs={N_EPOCHS}, init={INIT}, metric={METRIC}, seed={report['config']['seed']}"
     )
     lines.append(
-        f"- warmup={report['config']['warmup']}, repeats={report['config']['repeats']}, python_bin={python_bin}"
+        f"- warmup={report['config']['warmup']}, repeats={report['config']['repeats']}, python_bin={display_executable(python_bin)}"
     )
     lines.append("- implementations: python_umap_learn, rust_umap_py")
     lines.append("- groups: e2e_mixed_knn_strategy, algo_exact_shared_knn_exact")

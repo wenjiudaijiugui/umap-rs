@@ -13,6 +13,7 @@ BENCH_DIR = ROOT / "benchmarks"
 sys.path.insert(0, str(BENCH_DIR))
 
 from gate_config import THRESHOLDS_PATH, emit_report, gate_report, load_gate_config
+from rust_bin_overrides import configure_rust_bins
 
 
 DATASETS = {
@@ -52,6 +53,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--trust-gap", type=float, default=None)
     p.add_argument("--recall-gap", type=float, default=None)
     p.add_argument("--pairwise-min-overlap", type=float, default=None)
+    p.add_argument("--rust-fit-bin", default=None)
+    p.add_argument("--rust-bench-bin", default=None)
+    p.add_argument("--skip-rust-build", action="store_true")
     p.add_argument("--output-json", default=None)
     args = p.parse_args()
     config = load_gate_config("consistency_smoke", args.gate_config)
@@ -70,10 +74,6 @@ def parse_args() -> argparse.Namespace:
     if args.pairwise_min_overlap is None:
         args.pairwise_min_overlap = float(config["pairwise_min_overlap"])
     return args
-
-
-def build_release_bins() -> None:
-    fair.build_rust_binaries()
 
 
 def available_impls(args: argparse.Namespace) -> List[str]:
@@ -127,7 +127,12 @@ def main() -> None:
     fair = fair_module
     fair.PYTHON_BIN = Path(args.python_bin)
     fair.RSCRIPT_BIN = Path(args.rscript_bin) if args.rscript_bin else Path("Rscript")
-    build_release_bins()
+    configure_rust_bins(
+        fair,
+        rust_fit_bin=args.rust_fit_bin,
+        rust_bench_bin=args.rust_bench_bin,
+        skip_rust_build=args.skip_rust_build,
+    )
     impls = available_impls(args)
 
     all_failures: List[str] = []

@@ -2,7 +2,7 @@
 
 ## Setup
 - n_neighbors=15, n_components=2, n_epochs=200, init=random, metric=euclidean, seed=42
-- warmup=0, repeats=1, python_bin=/home/shenshang/miniforge3/envs/umap_bench/bin/python
+- warmup=0, repeats=1, python_bin=python
 - implementations: python_umap_learn, rust_umap_py
 - groups: e2e_mixed_knn_strategy, algo_exact_shared_knn_exact
 - thread pinning: OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1, BLIS_NUM_THREADS=1, NUMBA_NUM_THREADS=1, VECLIB_MAXIMUM_THREADS=1, NUMEXPR_NUM_THREADS=1, PYTHONHASHSEED=0

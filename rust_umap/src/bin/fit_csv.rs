@@ -5,7 +5,8 @@ use std::path::Path;
 
 mod common_cli;
 use common_cli::{
-    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr, write_csv,
+    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr,
+    write_csv,
 };
 
 fn usage() {
@@ -75,7 +76,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         approx_knn_iters,
         approx_knn_threshold,
     };
-    optional.overrides.apply_to(&mut params);
+    optional.overrides.apply_to(&mut params)?;
 
     let mut model = UmapModel::new(params);
 

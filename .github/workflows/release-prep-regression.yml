@@ -37,7 +37,7 @@ jobs:
         with:
           r-version: '4.3'
       - name: Install Python benchmark deps
-        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt pytest
       - name: Install R benchmark deps
         run: Rscript benchmarks/install_r_bench_deps.R
       - name: Resolve baseline ref
@@ -66,6 +66,9 @@ jobs:
             git fetch origin main --depth=2
           fi
           git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASE_REF"
+      - name: Run release-prep unit tests
+        run: |
+          python -m pytest -q benchmarks/tests/test_release_prep_regression.py
       - name: Run release-prep regression
         run: |
           python benchmarks/release_prep_regression.py \

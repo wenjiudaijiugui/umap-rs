@@ -94,6 +94,8 @@ def main() -> None:
     x = np.ascontiguousarray(x, dtype=np.float32)
 
     precomputed_knn = load_precomputed_knn(args)
+    precomputed_validation_mode = "none" if precomputed_knn is None else "first_run_only"
+    precomputed_validation_each_run = False
     embedding = None
     embedding_out = np.empty((x.shape[0], args.n_components), dtype=np.float32)
 
@@ -146,7 +148,8 @@ def main() -> None:
             "timing_boundary": "model.fit_transform*(x, ...)",
             "post_timing_dtype_copy": False,
             "embedding_buffer_reused": True,
-            "precomputed_validation_each_run": precomputed_knn is None,
+            "precomputed_validation_each_run": precomputed_validation_each_run,
+            "precomputed_validation_mode": precomputed_validation_mode,
         },
     }
     print(json.dumps(result))

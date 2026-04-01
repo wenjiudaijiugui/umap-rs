@@ -18,6 +18,9 @@ from sklearn.manifold import trustworthiness
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 
+from reporting_utils import display_executable
+from rust_build_utils import build_release_bins
+
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCH_DIR = ROOT / "benchmarks"
@@ -578,11 +581,10 @@ def compute_consistency(
 
 
 def build_rust_binaries() -> None:
-    subprocess.run(
-        ["cargo", "build", "--release", "--bin", "fit_csv", "--bin", "bench_fit_csv"],
-        cwd=ROOT / "rust_umap",
-        check=True,
-    )
+    global RUST_FIT, RUST_BENCH
+    bins = build_release_bins(ROOT, need_fit_bin=True)
+    RUST_FIT = bins.fit_csv if bins.fit_csv is not None else RUST_FIT
+    RUST_BENCH = bins.bench_fit_csv
 
 
 def benchmark_e2e(
@@ -961,8 +963,8 @@ def main() -> None:
         f"- n_neighbors={N_NEIGHBORS}, n_components={N_COMPONENTS}, n_epochs={N_EPOCHS}, init={INIT}, seed={args.seed}"
     )
     lines.append(f"- warmup={args.warmup}, repeats={args.repeats}, randomized_order_per_repeat=True")
-    lines.append(f"- python_bin={PYTHON_BIN}")
-    lines.append(f"- rscript_bin={RSCRIPT_BIN}")
+    lines.append(f"- python_bin={display_executable(PYTHON_BIN)}")
+    lines.append(f"- rscript_bin={display_executable(RSCRIPT_BIN)}")
     lines.append("- groups: e2e_default_ann, algo_exact_shared_knn")
     lines.append(f"- e2e_metric=euclidean")
     lines.append(f"- algo_exact_metrics={','.join(metrics)}")
