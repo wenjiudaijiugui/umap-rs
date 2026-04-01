@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -11,9 +13,11 @@ import time
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import numpy as np
-
 ROOT = Path(__file__).resolve().parents[1]
+BENCH_DIR = ROOT / "benchmarks"
+sys.path.insert(0, str(BENCH_DIR))
+
+from gate_config import THRESHOLDS_PATH, emit_report, gate_report, load_gate_config
 
 THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
@@ -127,17 +131,35 @@ def parse_args() -> argparse.Namespace:
             "and robust ratio statistics"
         )
     )
+    p.add_argument("--gate-config", default=str(THRESHOLDS_PATH))
     p.add_argument("--candidate-root", default=str(DEFAULT_CANDIDATE_ROOT))
     p.add_argument("--baseline-root", default=DEFAULT_BASELINE_ROOT or None)
-    p.add_argument("--warmup", type=int, default=1)
-    p.add_argument("--repeats", type=int, default=3)
-    p.add_argument("--paired-runs", type=int, default=4)
-    p.add_argument("--time-ratio-threshold", type=float, default=1.35)
-    p.add_argument("--rss-ratio-threshold", type=float, default=1.25)
-    p.add_argument("--tail-slack", type=float, default=0.05)
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--warmup", type=int, default=None)
+    p.add_argument("--repeats", type=int, default=None)
+    p.add_argument("--paired-runs", type=int, default=None)
+    p.add_argument("--time-ratio-threshold", type=float, default=None)
+    p.add_argument("--rss-ratio-threshold", type=float, default=None)
+    p.add_argument("--tail-slack", type=float, default=None)
+    p.add_argument("--seed", type=int, default=None)
     p.add_argument("--metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
-    return p.parse_args()
+    p.add_argument("--output-json", default=None)
+    args = p.parse_args()
+    config = load_gate_config("no_regression_smoke", args.gate_config)
+    if args.warmup is None:
+        args.warmup = int(config["warmup"])
+    if args.repeats is None:
+        args.repeats = int(config["repeats"])
+    if args.paired_runs is None:
+        args.paired_runs = int(config["paired_runs"])
+    if args.time_ratio_threshold is None:
+        args.time_ratio_threshold = float(config["time_ratio_threshold"])
+    if args.rss_ratio_threshold is None:
+        args.rss_ratio_threshold = float(config["rss_ratio_threshold"])
+    if args.tail_slack is None:
+        args.tail_slack = float(config["tail_slack"])
+    if args.seed is None:
+        args.seed = int(config["seed"])
+    return args
 
 
 def build_release(root: Path) -> Path:
@@ -150,6 +172,8 @@ def build_release(root: Path) -> Path:
 
 
 def generate_dataset(seed: int, n_samples: int = 1400, n_features: int = 24) -> np.ndarray:
+    import numpy as np
+
     rng = np.random.default_rng(seed)
     centers = np.stack(
         [
@@ -223,6 +247,8 @@ def run_bench(
 
 
 def ratio_stats(candidate_vals: List[float], baseline_vals: List[float]) -> Dict[str, float]:
+    import numpy as np
+
     c = np.asarray(candidate_vals, dtype=np.float64)
     b = np.asarray(baseline_vals, dtype=np.float64)
     if c.size != b.size:
@@ -244,6 +270,9 @@ def ratio_stats(candidate_vals: List[float], baseline_vals: List[float]) -> Dict
 
 def main() -> None:
     args = parse_args()
+    config = load_gate_config("no_regression_smoke", args.gate_config)
+    import numpy as np
+
     if args.paired_runs < 1:
         raise SystemExit("--paired-runs must be >= 1")
     if not args.baseline_root:
@@ -317,8 +346,6 @@ def main() -> None:
             "machine": platform.machine(),
         },
     }
-    print(json.dumps(summary, indent=2))
-
     failures: List[str] = []
     if time_ratio["median"] > args.time_ratio_threshold:
         failures.append(
@@ -339,6 +366,16 @@ def main() -> None:
             "candidate process_max_rss_mb p75 ratio "
             f"{rss_ratio['p75']:.4f} exceeded threshold {args.rss_ratio_threshold * (1.0 + args.tail_slack):.4f}"
         )
+
+    report = gate_report(
+        gate="no_regression_smoke",
+        strict=bool(config["strict"]),
+        overall_pass=not failures,
+        thresholds=summary["thresholds"],
+        failures=failures,
+        details=summary,
+    )
+    emit_report(report, args.output_json)
 
     if failures:
         for failure in failures:

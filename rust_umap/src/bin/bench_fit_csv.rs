@@ -20,7 +20,10 @@ fn metric_name(metric: Metric) -> &'static str {
 }
 fn usage() {
     eprintln!(
-        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]\n\
+        "Usage:\n  bench_fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \\\n          <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> <approx_threshold> \\\n          <warmup> <repeats> [knn_idx.csv] [knn_dist.csv] [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine] \\\n\
+          [--learning-rate <f32>] [--min-dist <f32>] [--spread <f32>] \\\n\
+          [--local-connectivity <f32>] [--set-op-mix-ratio <f32>] \\\n\
+          [--repulsion-strength <f32>] [--negative-sample-rate <usize>]\n\
           Optional CSR input (fit mode): --csr-indptr <path> --csr-indices <path> --csr-data <path> --csr-n-cols <n>"
     );
 }
@@ -54,7 +57,7 @@ fn read_proc_status_kb(field: &str) -> Option<u64> {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let (metric, knn_metric_opt, sparse_input) = extract_optional_args(&mut args)?;
+    let optional = extract_optional_args(&mut args)?;
     if args.len() < 14 {
         usage();
         return Err("insufficient arguments".into());
@@ -83,30 +86,30 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         None
     };
-    if precomputed.is_none() && knn_metric_opt.is_some() {
+    if precomputed.is_none() && optional.knn_metric.is_some() {
         return Err("--knn-metric requires precomputed kNN inputs".into());
     }
-    if sparse_input.is_some() && precomputed.is_some() {
+    if optional.sparse_input.is_some() && precomputed.is_some() {
         return Err("CSR input cannot be combined with precomputed kNN files".into());
     }
-    let knn_metric = knn_metric_opt.unwrap_or(metric);
+    let knn_metric = optional.knn_metric.unwrap_or(optional.metric);
 
-    let dense_data = if sparse_input.is_some() {
+    let dense_data = if optional.sparse_input.is_some() {
         None
     } else {
         Some(read_csv(input_path)?)
     };
-    let sparse_data = if let Some(spec) = sparse_input.as_ref() {
+    let sparse_data = if let Some(spec) = optional.sparse_input.as_ref() {
         Some(read_sparse_csr(spec)?)
     } else {
         None
     };
 
-    let params = UmapParams {
+    let mut params = UmapParams {
         n_neighbors,
         n_components,
         n_epochs: Some(n_epochs),
-        metric,
+        metric: optional.metric,
         learning_rate: 1.0,
         min_dist: 0.1,
         spread: 1.0,
@@ -121,6 +124,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         approx_knn_iters,
         approx_knn_threshold,
     };
+    optional.overrides.apply_to(&mut params);
 
     let total = warmup + repeats;
     let mut times = Vec::with_capacity(repeats);
@@ -142,7 +146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let data = dense_data
                 .as_ref()
                 .ok_or("dense input data is unavailable")?;
-            model.fit_transform(&data)?
+            model.fit_transform(data)?
         };
         let dt = t0.elapsed().as_secs_f64();
         if i >= warmup {
@@ -190,7 +194,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         } else {
             "dense"
         },
-        metric_name(metric),
+        metric_name(params.metric),
         metric_name(knn_metric),
         precomputed.is_some(),
         n_neighbors,

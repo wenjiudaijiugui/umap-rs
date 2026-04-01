@@ -88,13 +88,35 @@ Outputs:
 - `benchmarks/report_ecosystem_python_binding.json`
 - `benchmarks/report_ecosystem_python_binding.md`
 
+### Current scope boundary
+
+The repository currently treats the following surface as the documented and benchmarked UMAP core:
+
+- Dense single-dataset `Umap` workflows: `fit`, `fit_transform`, `transform`, and dense-trained `inverse_transform`
+- Precomputed-kNN fit for dense input, with explicit metric alignment
+- Sparse CSR fit MVP in the Rust crate, plus dense-query `transform` after sparse training for `euclidean`, `manhattan`, and `cosine`
+
+The current boundary is intentionally narrower than "full `umap-learn` parity":
+
+- Sparse-trained `inverse_transform` is not supported yet and returns an error
+- The Python binding MVP aligns to the crate's core single-dataset `Umap` workflow only; it does not promise parity for crate-only experimental or auxiliary surfaces such as parametric UMAP, aligned UMAP, CLI binaries, or benchmark helpers
+- ANN quality/performance parity with `pynndescent` is still out of scope
+
+See `docs/adr/ADR-L8-scope-alignment.md` for the repository-level scope decision that this README and `rust_umap/README.md` share.
+
 ## CI and Benchmark Gates
 
 The repository CI and benchmark automation currently runs in these workflow stages:
 
-1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `no-regression-smoke` (metric matrix: euclidean/manhattan/cosine).
+1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `ann-e2e-smoke` -> `wave1-smoke` -> `no-regression-smoke` (metric matrix: euclidean/manhattan/cosine).
 2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` (binding tests + ecosystem benchmark smoke + machine-readable gate).
 3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled deep reporting via `consistency-smoke` -> `no-regression-smoke` -> `optimization-report`.
+4. `.github/workflows/release-prep-regression.yml`: path-triggered project-level convergence run via `benchmarks/release_prep_regression.py` with a baseline worktree.
+
+Latest project-level convergence snapshot:
+
+- `reports/final-convergence-latest.json`
+- `reports/final-convergence-latest.md`
 
 ## Local Validation Commands
 
@@ -123,6 +145,7 @@ $PYTHON_BIN -m py_compile \
   benchmarks/compare_ecosystem_python_binding.py \
   benchmarks/ci_consistency_smoke.py \
   benchmarks/ci_no_regression.py \
+  benchmarks/ci_wave1_smoke.py \
   benchmarks/run_rust_umap_py.py \
   benchmarks/run_rust_umap_py_algo.py
 
@@ -159,5 +182,41 @@ for METRIC in euclidean manhattan cosine; do
 done
 git worktree remove ../umap-rs-baseline
 
+$PYTHON_BIN benchmarks/ci_wave1_smoke.py \
+  --manifest-path rust_umap/Cargo.toml \
+  --output-json wave1-smoke.local.json
+
 $PYTHON_BIN -m pytest -q rust_umap_py/tests/test_binding.py
 ```
+
+## Wave 3 Release-Prep
+
+Wave 3 convergence now has a single local orchestrator for release-prep regression:
+
+```bash
+PYTHON_BIN="$(command -v python3 || command -v python)"
+CANDIDATE_ROOT="$(pwd -P)"
+BASE_REF="$(git rev-parse HEAD~1)"
+git worktree add ../umap-rs-baseline "$BASE_REF"
+BASELINE_ROOT="$(cd ../umap-rs-baseline && pwd -P)"
+
+$PYTHON_BIN benchmarks/release_prep_regression.py \
+  --candidate-root "$CANDIDATE_ROOT" \
+  --baseline-root "$BASELINE_ROOT" \
+  --gate-config benchmarks/gate_thresholds.json \
+  --metrics euclidean,manhattan,cosine \
+  --output-json benchmarks/release-prep-regression.local.json
+
+git worktree remove ../umap-rs-baseline
+```
+
+What it runs:
+1. `wave1-smoke`
+2. `ann-e2e-smoke`
+3. `consistency-smoke`
+4. `no-regression-smoke` for each requested metric
+
+Notes:
+1. `benchmarks/gate_thresholds.json` is the frozen Wave 3 gate threshold source; `--gate-config` can override it explicitly.
+2. `--require-r` forces the consistency gate to require `Rscript`.
+3. The summary JSON records per-gate commands, artifacts, exit status, and captured output tails.

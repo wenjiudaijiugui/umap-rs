@@ -252,6 +252,7 @@ impl AlignedUmapModel {
 
         let prepared_relations = prepare_relations(datasets, relations)?;
         if self.params.alignment_regularization > 0.0 && !prepared_relations.is_empty() {
+            warmstart_embeddings_with_relations(&mut embeddings, &prepared_relations);
             optimize_aligned_embeddings(&mut embeddings, &prepared_relations, &self.params);
         }
 
@@ -278,12 +279,12 @@ fn validate_aligned_params(params: &AlignedUmapParams) -> Result<(), AlignedUmap
             "alignment_learning_rate must be finite and > 0".to_string(),
         ));
     }
-    if let Some(epochs) = params.alignment_epochs {
-        if epochs == 0 {
-            return Err(AlignedUmapError::InvalidParameter(
-                "alignment_epochs must be >= 1 when provided".to_string(),
-            ));
-        }
+    if let Some(epochs) = params.alignment_epochs
+        && epochs == 0
+    {
+        return Err(AlignedUmapError::InvalidParameter(
+            "alignment_epochs must be >= 1 when provided".to_string(),
+        ));
     }
     if params.recenter_interval == 0 {
         return Err(AlignedUmapError::InvalidParameter(
@@ -433,8 +434,7 @@ fn optimize_aligned_embeddings(
             delta.fill(0.0);
         }
 
-        let progress = epoch as f32 / n_epochs as f32;
-        let step_size = params.alignment_learning_rate * (1.0 - progress);
+        let step_size = cosine_decay_alignment_lr(params.alignment_learning_rate, epoch, n_epochs);
         if step_size <= 0.0 {
             break;
         }
@@ -484,6 +484,60 @@ fn optimize_aligned_embeddings(
             enforce_embedding_system_stats(embeddings.as_mut_slice(), &target_stats);
         }
     }
+}
+
+fn warmstart_embeddings_with_relations(
+    embeddings: &mut [Vec<Vec<f32>>],
+    relations: &[PreparedRelation],
+) {
+    if embeddings.is_empty() {
+        return;
+    }
+
+    let n_components = embeddings[0][0].len();
+    for relation in relations {
+        if relation.pairs.is_empty() {
+            continue;
+        }
+        let left_idx = relation.left_slice;
+        let right_idx = relation.right_slice;
+        let left = &embeddings[left_idx];
+        let right = &embeddings[right_idx];
+
+        let mut offset = vec![0.0_f32; n_components];
+        let mut weight_sum = 0.0_f32;
+        for &(l_idx, r_idx) in relation.pairs.iter() {
+            let w = 0.5 * (relation.left_inv_degree[l_idx] + relation.right_inv_degree[r_idx]);
+            if w <= 0.0 {
+                continue;
+            }
+            weight_sum += w;
+            for dim in 0..n_components {
+                offset[dim] += w * (left[l_idx][dim] - right[r_idx][dim]);
+            }
+        }
+        if weight_sum <= 0.0 {
+            continue;
+        }
+        for value in offset.iter_mut().take(n_components) {
+            *value /= weight_sum;
+        }
+
+        for row in embeddings[right_idx].iter_mut() {
+            for dim in 0..n_components {
+                row[dim] += offset[dim];
+            }
+        }
+    }
+}
+
+fn cosine_decay_alignment_lr(base: f32, epoch: usize, total_epochs: usize) -> f32 {
+    if total_epochs <= 1 {
+        return base;
+    }
+    let progress = epoch as f32 / (total_epochs - 1) as f32;
+    let factor = 0.05 + 0.95 * 0.5 * (1.0 + (std::f32::consts::PI * (1.0 - progress)).cos());
+    base * factor
 }
 
 fn alignment_epoch_count(params: &AlignedUmapParams, embeddings: &[Vec<Vec<f32>>]) -> usize {
@@ -555,9 +609,9 @@ fn enforce_embedding_system_stats(embeddings: &mut [Vec<Vec<f32>>], target: &Emb
 
     for slice in embeddings.iter_mut() {
         for row in slice.iter_mut() {
-            for dim in 0..n_components {
-                let centered = row[dim] - current.centroid[dim];
-                row[dim] = target.centroid[dim] + centered * scale;
+            for (dim, value) in row.iter_mut().enumerate().take(n_components) {
+                let centered = *value - current.centroid[dim];
+                *value = target.centroid[dim] + centered * scale;
             }
         }
     }
@@ -591,7 +645,7 @@ mod tests {
             let drift = slice_idx as f32 * 0.22;
             for i in 0..n_samples {
                 let t = 2.0 * std::f32::consts::PI * i as f32 / n_samples as f32;
-                let base = vec![
+                let base = [
                     (t + drift).cos(),
                     (t + drift).sin(),
                     (2.0 * t + 0.5 * drift).cos() * 0.7,
@@ -728,6 +782,54 @@ mod tests {
             "fixed seed should produce deterministic aligned embedding"
         );
         assert_all_finite(&emb_a);
+    }
+
+    #[test]
+    fn warmstart_reduces_initial_identity_gap() {
+        let slices = make_temporal_slices(2, 64, 8);
+        let base_umap = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(70),
+            metric: Metric::Euclidean,
+            learning_rate: 1.0,
+            min_dist: 0.1,
+            spread: 1.0,
+            local_connectivity: 1.0,
+            set_op_mix_ratio: 1.0,
+            repulsion_strength: 1.0,
+            negative_sample_rate: 5,
+            random_seed: 42,
+            init: InitMethod::Random,
+            use_approximate_knn: false,
+            approx_knn_candidates: 30,
+            approx_knn_iters: 10,
+            approx_knn_threshold: 4096,
+        };
+
+        let mut embeddings = Vec::with_capacity(slices.len());
+        for (slice_idx, slice) in slices.iter().enumerate() {
+            let mut params = base_umap.clone();
+            params.random_seed = derive_slice_seed(params.random_seed, slice_idx as u64 + 1);
+            let mut model = UmapModel::new(params);
+            embeddings.push(
+                model
+                    .fit_transform(slice)
+                    .expect("slice fit should succeed"),
+            );
+        }
+
+        let relations = build_identity_relations(&slices).expect("relations should build");
+        let prepared = prepare_relations(&slices, &relations).expect("relations should prepare");
+
+        let gap_before = mean_identity_gap(&embeddings);
+        warmstart_embeddings_with_relations(&mut embeddings, &prepared);
+        let gap_after = mean_identity_gap(&embeddings);
+
+        assert!(
+            gap_after <= gap_before + 1e-6,
+            "warm-start should not increase identity gap: before={gap_before}, after={gap_after}"
+        );
     }
 
     #[test]

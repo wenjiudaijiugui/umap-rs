@@ -1,0 +1,32 @@
+{
+  "consistency_smoke": {
+    "strict": true,
+    "seed": 42,
+    "warmup": 0,
+    "repeats": 1,
+    "sample_cap": 1500,
+    "trust_gap": 0.02,
+    "recall_gap": 0.05,
+    "pairwise_min_overlap": 0.4
+  },
+  "ann_e2e_smoke": {
+    "strict": true,
+    "seed": 42,
+    "warmup": 0,
+    "repeats": 1,
+    "sample_cap": 1200,
+    "trust_gap": 0.03,
+    "recall_gap": 0.08,
+    "pairwise_min_overlap": 0.35
+  },
+  "no_regression_smoke": {
+    "strict": true,
+    "seed": 42,
+    "warmup": 1,
+    "repeats": 3,
+    "paired_runs": 4,
+    "time_ratio_threshold": 1.35,
+    "rss_ratio_threshold": 1.25,
+    "tail_slack": 0.05
+  }
+}

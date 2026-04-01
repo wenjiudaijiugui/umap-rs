@@ -1,0 +1,100 @@
+{
+  "gate": "consistency_smoke",
+  "strict": true,
+  "overall_pass": true,
+  "thresholds": {
+    "sample_cap": 1500,
+    "trust_gap": 0.02,
+    "recall_gap": 0.05,
+    "pairwise_min_overlap": 0.4
+  },
+  "failures": [],
+  "timestamp_unix": 1775013177,
+  "details": {
+    "impls": [
+      "python_umap_learn",
+      "rust_umap"
+    ],
+    "datasets": {
+      "breast_cancer": {
+        "runs": {
+          "python_umap_learn": {
+            "fit_mean_sec": 1.3427096159994107,
+            "fit_std_sec": 0.0,
+            "process_max_rss_mb": 308.828125
+          },
+          "rust_umap": {
+            "fit_mean_sec": 0.122922786,
+            "fit_std_sec": 0.0,
+            "process_max_rss_mb": 4.375
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 569,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.916196827971872,
+            "rust_umap": 0.9225177088094487
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.3950790861159939,
+            "rust_umap": 0.4123022847100187
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.206557335610246,
+              "knn_overlap_at_15": 0.49595782073813705
+            }
+          }
+        }
+      },
+      "digits": {
+        "runs": {
+          "python_umap_learn": {
+            "fit_mean_sec": 1.9479970209995372,
+            "fit_std_sec": 0.0,
+            "process_max_rss_mb": 311.9453125
+          },
+          "rust_umap": {
+            "fit_mean_sec": 0.335448079,
+            "fit_std_sec": 0.0,
+            "process_max_rss_mb": 7.0
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1500,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9638785225306552,
+            "rust_umap": 0.9700581960430301
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.44204444444444296,
+            "rust_umap": 0.4541333333333326
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.8649530716602343,
+              "knn_overlap_at_15": 0.5751999999999988
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "seed": 42,
+      "warmup": 0,
+      "repeats": 1,
+      "sample_cap": 1500,
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "PYTHONHASHSEED": "0"
+      },
+      "requires_r": false
+    }
+  }
+}

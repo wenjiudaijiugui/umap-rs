@@ -1,0 +1,85 @@
+name: release-prep-regression
+
+on:
+  pull_request:
+    paths:
+      - 'rust_umap/**'
+      - 'benchmarks/**'
+      - '.github/workflows/release-prep-regression.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'rust_umap/**'
+      - 'benchmarks/**'
+      - '.github/workflows/release-prep-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-prep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.3'
+      - name: Install Python benchmark deps
+        run: python -m pip install --upgrade pip && python -m pip install -r benchmarks/requirements-bench.txt
+      - name: Install R benchmark deps
+        run: Rscript benchmarks/install_r_bench_deps.R
+      - name: Resolve baseline ref
+        id: baseline
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" && -n "${PR_BASE_SHA}" ]]; then
+            BASE_REF="$PR_BASE_SHA"
+          elif [[ "$EVENT_NAME" == "push" && -n "${PUSH_BEFORE_SHA}" && "${PUSH_BEFORE_SHA}" != "0000000000000000000000000000000000000000" ]]; then
+            BASE_REF="$PUSH_BEFORE_SHA"
+          else
+            BASE_REF="HEAD~1"
+          fi
+          echo "base_ref=${BASE_REF}" >> "$GITHUB_OUTPUT"
+      - name: Materialize baseline worktree
+        run: |
+          set -euo pipefail
+          BASE_REF="${{ steps.baseline.outputs.base_ref }}"
+          if [[ "$BASE_REF" =~ ^[0-9a-f]{40}$ ]]; then
+            git fetch origin "$BASE_REF" --depth=1
+          else
+            git fetch origin main --depth=2
+          fi
+          git worktree add "$RUNNER_TEMP/umap-rs-baseline" "$BASE_REF"
+      - name: Run release-prep regression
+        run: |
+          python benchmarks/release_prep_regression.py \
+            --candidate-root "$GITHUB_WORKSPACE" \
+            --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
+            --python-bin python \
+            --rscript-bin Rscript \
+            --gate-config benchmarks/gate_thresholds.json \
+            --metrics euclidean,manhattan,cosine \
+            --output-json release-prep-regression.json
+      - name: Upload release-prep artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-prep-regression
+          path: |
+            release-prep-regression.json
+            release-prep-regression.artifacts

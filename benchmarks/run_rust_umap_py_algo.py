@@ -95,6 +95,7 @@ def main() -> None:
 
     precomputed_knn = load_precomputed_knn(args)
     embedding = None
+    embedding_out = np.empty((x.shape[0], args.n_components), dtype=np.float32)
 
     fit_times = []
     total = args.warmup + args.repeats
@@ -102,7 +103,7 @@ def main() -> None:
         model = create_model(args)
         t0 = time.perf_counter()
         if precomputed_knn is None:
-            embedding = model.fit_transform(x)
+            embedding = model.fit_transform(x, out=embedding_out)
         else:
             knn_idx, knn_dist = precomputed_knn
             embedding = model.fit_transform_with_knn(
@@ -110,6 +111,8 @@ def main() -> None:
                 knn_idx,
                 knn_dist,
                 knn_metric=args.knn_metric,
+                validate_precomputed=(i == 0),
+                out=embedding_out,
             )
         dt = time.perf_counter() - t0
         if i >= args.warmup:
@@ -142,7 +145,8 @@ def main() -> None:
             "output_c_contiguous": bool(embedding.flags.c_contiguous),
             "timing_boundary": "model.fit_transform*(x, ...)",
             "post_timing_dtype_copy": False,
-            "embedding_buffer_reused": False,
+            "embedding_buffer_reused": True,
+            "precomputed_validation_each_run": precomputed_knn is None,
         },
     }
     print(json.dumps(result))

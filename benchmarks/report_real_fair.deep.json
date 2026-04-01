@@ -1,0 +1,1368 @@
+{
+  "config": {
+    "dataset_type": "real",
+    "n_neighbors": 15,
+    "n_components": 2,
+    "n_epochs": 200,
+    "init": "random",
+    "seed": 42,
+    "warmup": 1,
+    "repeats": 5,
+    "randomized_order_per_repeat": true,
+    "thread_env": {
+      "OMP_NUM_THREADS": "1",
+      "OPENBLAS_NUM_THREADS": "1",
+      "MKL_NUM_THREADS": "1",
+      "BLIS_NUM_THREADS": "1",
+      "NUMBA_NUM_THREADS": "1",
+      "VECLIB_MAXIMUM_THREADS": "1",
+      "NUMEXPR_NUM_THREADS": "1",
+      "PYTHONHASHSEED": "0"
+    },
+    "groups": [
+      "e2e_default_ann",
+      "algo_exact_shared_knn"
+    ],
+    "e2e_metric": "euclidean",
+    "algo_exact_metrics": [
+      "euclidean",
+      "manhattan",
+      "cosine"
+    ],
+    "datasets": [
+      {
+        "name": "breast_cancer",
+        "n_samples_original": 569,
+        "n_samples_used": 569,
+        "n_features": 30
+      },
+      {
+        "name": "digits",
+        "n_samples_original": 1797,
+        "n_samples_used": 1797,
+        "n_features": 64
+      },
+      {
+        "name": "california_housing",
+        "n_samples_original": 20640,
+        "n_samples_used": 5000,
+        "n_features": 8
+      }
+    ]
+  },
+  "groups": {
+    "e2e_default_ann": {
+      "breast_cancer": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 5.132795506800176,
+            "elapsed_std_sec": 0.014896009492702965,
+            "max_rss_mean_mb": 345.31796875,
+            "max_rss_std_mb": 0.1286716615435388,
+            "elapsed_samples_sec": [
+              5.12146436400144,
+              5.130999803001032,
+              5.16180824699768,
+              5.1270792440009245,
+              5.122625875999802
+            ],
+            "max_rss_samples_mb": [
+              345.44921875,
+              345.40234375,
+              345.34765625,
+              345.3125,
+              345.078125
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 0.7247368689997529,
+            "elapsed_std_sec": 0.005994597350376136,
+            "max_rss_mean_mb": 174.59921875,
+            "max_rss_std_mb": 0.090625,
+            "elapsed_samples_sec": [
+              0.7246139260023483,
+              0.7206651480009896,
+              0.7279491949993826,
+              0.7339538739979616,
+              0.7165022019980825
+            ],
+            "max_rss_samples_mb": [
+              174.41796875,
+              174.64453125,
+              174.64453125,
+              174.64453125,
+              174.64453125
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.1318648590000521,
+            "elapsed_std_sec": 0.0028289004746184883,
+            "max_rss_mean_mb": 4.425,
+            "max_rss_std_mb": 0.06123724356957945,
+            "elapsed_samples_sec": [
+              0.1309498619993974,
+              0.12981893500182196,
+              0.13039044400284183,
+              0.13747224399776314,
+              0.13069280999843613
+            ],
+            "max_rss_samples_mb": [
+              4.375,
+              4.375,
+              4.5,
+              4.5,
+              4.375
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": true
+            }
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 569,
+          "trustworthiness_at_15": {
+            "r_uwot": 0.9147599520183,
+            "python_umap_learn": 0.9161963987974533,
+            "rust_umap": 0.9143041687857154
+          },
+          "original_knn_recall_at_15": {
+            "r_uwot": 0.40738137082601167,
+            "python_umap_learn": 0.39871118922085624,
+            "rust_umap": 0.4063268892794386
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.11523175082129056,
+              "knn_overlap_at_15": 0.5111892208553018
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.04179616340125942,
+              "knn_overlap_at_15": 0.6087873462214419
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.10401851709240369,
+              "knn_overlap_at_15": 0.5602811950790867
+            }
+          }
+        }
+      },
+      "digits": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 6.554723491400364,
+            "elapsed_std_sec": 0.022856437328383633,
+            "max_rss_mean_mb": 358.8109375,
+            "max_rss_std_mb": 0.08916523679733598,
+            "elapsed_samples_sec": [
+              6.576592582998273,
+              6.587927975000639,
+              6.533270760002779,
+              6.539628948998143,
+              6.536197190001985
+            ],
+            "max_rss_samples_mb": [
+              358.75,
+              358.7890625,
+              358.84375,
+              358.70703125,
+              358.96484375
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 1.1489776835995145,
+            "elapsed_std_sec": 0.015356085727398834,
+            "max_rss_mean_mb": 182.6484375,
+            "max_rss_std_mb": 0.07303747432825153,
+            "elapsed_samples_sec": [
+              1.1692996589990798,
+              1.1435299160002614,
+              1.146217825000349,
+              1.1248181549999572,
+              1.1610228629979247
+            ],
+            "max_rss_samples_mb": [
+              182.64453125,
+              182.64453125,
+              182.5390625,
+              182.76953125,
+              182.64453125
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.44315590240075836,
+            "elapsed_std_sec": 0.001717292500658459,
+            "max_rss_mean_mb": 6.875,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              0.4415424520011584,
+              0.4438849260004645,
+              0.4451900530002604,
+              0.4444265849997464,
+              0.4407354960021621
+            ],
+            "max_rss_samples_mb": [
+              6.875,
+              6.875,
+              6.875,
+              6.875,
+              6.875
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": true
+            }
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1797,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9672480983693019,
+            "rust_umap": 0.9732674002371902,
+            "r_uwot": 0.9691629771695571
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.45627898349100426,
+            "rust_umap": 0.4719718048599519,
+            "r_uwot": 0.4652940085327405
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.9825165116346787,
+              "knn_overlap_at_15": 0.5414950843999264
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.9225644734885535,
+              "knn_overlap_at_15": 0.5496568354665177
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.7519582794800584,
+              "knn_overlap_at_15": 0.6083472454090143
+            }
+          }
+        }
+      },
+      "california_housing": {
+        "speed_and_memory": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 10.078169750200322,
+            "elapsed_std_sec": 0.09291653846391922,
+            "max_rss_mean_mb": 436.88125,
+            "max_rss_std_mb": 0.39095767084254146,
+            "elapsed_samples_sec": [
+              9.99054966499898,
+              9.998435391000385,
+              10.020880371001113,
+              10.172912248999637,
+              10.208071075001499
+            ],
+            "max_rss_samples_mb": [
+              437.4296875,
+              437.2109375,
+              436.45703125,
+              436.46484375,
+              436.84375
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "r_uwot": {
+            "elapsed_mean_sec": 2.534982661400136,
+            "elapsed_std_sec": 0.026602907177754733,
+            "max_rss_mean_mb": 246.73515625,
+            "max_rss_std_mb": 0.12093992245635847,
+            "elapsed_samples_sec": [
+              2.495598041001358,
+              2.532037967001088,
+              2.5204177250016073,
+              2.5720361369967577,
+              2.554823436999868
+            ],
+            "max_rss_samples_mb": [
+              246.65625,
+              246.84765625,
+              246.5625,
+              246.890625,
+              246.71875
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": false
+            }
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 1.0507363664008154,
+            "elapsed_std_sec": 0.0023420951107930204,
+            "max_rss_mean_mb": 15.5,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              1.050502376001532,
+              1.0521161830001802,
+              1.0503209180023987,
+              1.046833587999572,
+              1.0539087670003937
+            ],
+            "max_rss_samples_mb": [
+              15.5,
+              15.5,
+              15.5,
+              15.5,
+              15.5
+            ],
+            "context": {
+              "mode": "e2e_default_ann",
+              "metric": "euclidean",
+              "precomputed_knn": false,
+              "use_approximate_knn": true
+            }
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 2000,
+          "trustworthiness_at_15": {
+            "rust_umap": 0.9626803237228123,
+            "python_umap_learn": 0.970719018715225,
+            "r_uwot": 0.9687806609340752
+          },
+          "original_knn_recall_at_15": {
+            "rust_umap": 0.3584666666666659,
+            "python_umap_learn": 0.3779999999999994,
+            "r_uwot": 0.372766666666667
+          },
+          "pairwise": {
+            "python_umap_learn__vs__r_uwot": {
+              "procrustes_disparity": 0.49694395980263883,
+              "knn_overlap_at_15": 0.5111000000000001
+            },
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.3112419109353101,
+              "knn_overlap_at_15": 0.5448666666666646
+            },
+            "r_uwot__vs__rust_umap": {
+              "procrustes_disparity": 0.3786175814037235,
+              "knn_overlap_at_15": 0.48753333333333343
+            }
+          }
+        }
+      }
+    },
+    "algo_exact_shared_knn": {
+      "euclidean": {
+        "breast_cancer": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 0.18838693319921732,
+              "fit_std_sec": 0.0015324175435265026,
+              "fit_times_sec": [
+                0.1874022829979367,
+                0.1872930429999542,
+                0.18799624699749984,
+                0.18783629999961704,
+                0.19140679300107877
+              ],
+              "process_elapsed_sec": 4.285866682002961,
+              "process_max_rss_mb": 309.17578125,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.3648,
+              "fit_std_sec": 0.0443,
+              "fit_times_sec": [
+                0.327,
+                0.439,
+                0.37,
+                0.346,
+                0.342
+              ],
+              "process_elapsed_sec": 2.6335092519984755,
+              "process_max_rss_mb": 188.1953125,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.121279667,
+              "fit_std_sec": 0.001968335,
+              "fit_times_sec": [
+                0.119305163,
+                0.119646496,
+                0.124796521,
+                0.120859555,
+                0.1217906
+              ],
+              "process_elapsed_sec": 0.7402846410004713,
+              "process_max_rss_mb": 4.73828125,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 569,
+            "trustworthiness_at_15": {
+              "python_umap_learn": 0.916196827971872,
+              "rust_umap": 0.9225177088094487,
+              "r_uwot": 0.9138850799659235
+            },
+            "original_knn_recall_at_15": {
+              "python_umap_learn": 0.3950790861159939,
+              "rust_umap": 0.4123022847100187,
+              "r_uwot": 0.39964850615114345
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.2114767167385812,
+                "knn_overlap_at_15": 0.48084358523725856
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.206557335610246,
+                "knn_overlap_at_15": 0.49595782073813705
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.017516025300882074,
+                "knn_overlap_at_15": 0.6406561218512021
+              }
+            }
+          }
+        },
+        "digits": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 0.810515669400047,
+              "fit_std_sec": 0.002719232084450182,
+              "fit_times_sec": [
+                0.8156145270004345,
+                0.8094108769982995,
+                0.8100182090020098,
+                0.8100695979992452,
+                0.8074651360002463
+              ],
+              "process_elapsed_sec": 8.026109220001672,
+              "process_max_rss_mb": 312.38671875,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.6286,
+              "fit_std_sec": 0.0113,
+              "fit_times_sec": [
+                0.648,
+                0.625,
+                0.619,
+                0.623,
+                0.628
+              ],
+              "process_elapsed_sec": 4.262368919000437,
+              "process_max_rss_mb": 194.84765625,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.340674508,
+              "fit_std_sec": 0.002633206,
+              "fit_times_sec": [
+                0.336267617,
+                0.340591108,
+                0.344419269,
+                0.34036168,
+                0.341732866
+              ],
+              "process_elapsed_sec": 2.0487791309969907,
+              "process_max_rss_mb": 7.80859375,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 1797,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.9702181200158851,
+              "python_umap_learn": 0.9671852561484473,
+              "rust_umap": 0.9721405900727694
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.4661843813763677,
+              "python_umap_learn": 0.45468373214616986,
+              "rust_umap": 0.4685958078278607
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.7068350990316747,
+                "knn_overlap_at_15": 0.5414208866629568
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.869006301753549,
+                "knn_overlap_at_15": 0.5446113893526248
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.9565965014453839,
+                "knn_overlap_at_15": 0.6162493043962141
+              }
+            }
+          }
+        },
+        "california_housing": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 1.3845029691998207,
+              "fit_std_sec": 0.001183284202151753,
+              "fit_times_sec": [
+                1.383723918999749,
+                1.3859782030012866,
+                1.3858787319986732,
+                1.3831683579992387,
+                1.3837656340001558
+              ],
+              "process_elapsed_sec": 11.443213346999983,
+              "process_max_rss_mb": 316.48828125,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 1.4406,
+              "fit_std_sec": 0.0116,
+              "fit_times_sec": [
+                1.438,
+                1.437,
+                1.432,
+                1.461,
+                1.435
+              ],
+              "process_elapsed_sec": 9.336878641999647,
+              "process_max_rss_mb": 219.39453125,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.949839043,
+              "fit_std_sec": 0.003614192,
+              "fit_times_sec": [
+                0.954790372,
+                0.94600953,
+                0.946079934,
+                0.949093409,
+                0.953221972
+              ],
+              "process_elapsed_sec": 5.709837370999594,
+              "process_max_rss_mb": 17.52734375,
+              "context": {
+                "mode": "fit",
+                "metric": "euclidean",
+                "knn_metric": "euclidean",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 2000,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.9677054796830215,
+              "python_umap_learn": 0.9679388804586073,
+              "rust_umap": 0.9714941156634631
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.3746666666666663,
+              "python_umap_learn": 0.37299999999999967,
+              "rust_umap": 0.3827999999999989
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.5529350462034376,
+                "knn_overlap_at_15": 0.5726666666666653
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.4993294586817242,
+                "knn_overlap_at_15": 0.5725999999999982
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.3225934720873783,
+                "knn_overlap_at_15": 0.5972333333333308
+              }
+            }
+          }
+        }
+      },
+      "manhattan": {
+        "breast_cancer": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 0.4117105078003078,
+              "fit_std_sec": 0.0020280486067060437,
+              "fit_times_sec": [
+                0.4157344049999665,
+                0.4110390730020299,
+                0.4107443630018679,
+                0.41078346999711357,
+                0.41025122800056124
+              ],
+              "process_elapsed_sec": 5.625064497999119,
+              "process_max_rss_mb": 308.75390625,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.3312,
+              "fit_std_sec": 0.0179,
+              "fit_times_sec": [
+                0.319,
+                0.342,
+                0.357,
+                0.324,
+                0.314
+              ],
+              "process_elapsed_sec": 2.4712532970006578,
+              "process_max_rss_mb": 188.1484375,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.119614833,
+              "fit_std_sec": 0.000427862,
+              "fit_times_sec": [
+                0.120377726,
+                0.119356533,
+                0.119775349,
+                0.11918314,
+                0.119381419
+              ],
+              "process_elapsed_sec": 0.7294083400011004,
+              "process_max_rss_mb": 4.609375,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 569,
+            "trustworthiness_at_15": {
+              "python_umap_learn": 0.8859402460456942,
+              "rust_umap": 0.9048213454188849,
+              "r_uwot": 0.8994163227906637
+            },
+            "original_knn_recall_at_15": {
+              "python_umap_learn": 0.38769771528998337,
+              "rust_umap": 0.40831868775629854,
+              "r_uwot": 0.4032806092560058
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.014617264081214441,
+                "knn_overlap_at_15": 0.5434094903339192
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.14997003239786338,
+                "knn_overlap_at_15": 0.4899824253075568
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.14537437290094096,
+                "knn_overlap_at_15": 0.6362038664323392
+              }
+            }
+          }
+        },
+        "digits": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 1.296930866000912,
+              "fit_std_sec": 0.004180330904126322,
+              "fit_times_sec": [
+                1.2934909899995546,
+                1.29360059100145,
+                1.295592464000947,
+                1.2971259510013624,
+                1.3048443340012454
+              ],
+              "process_elapsed_sec": 10.924107627997728,
+              "process_max_rss_mb": 311.9921875,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.6188,
+              "fit_std_sec": 0.0052,
+              "fit_times_sec": [
+                0.615,
+                0.624,
+                0.612,
+                0.62,
+                0.623
+              ],
+              "process_elapsed_sec": 4.1857843739999225,
+              "process_max_rss_mb": 194.86328125,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.335367614,
+              "fit_std_sec": 0.000632337,
+              "fit_times_sec": [
+                0.33490537,
+                0.335475388,
+                0.336526891,
+                0.335195633,
+                0.334734789
+              ],
+              "process_elapsed_sec": 2.018920705002529,
+              "process_max_rss_mb": 7.92578125,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 1797,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.958545653252728,
+              "python_umap_learn": 0.9577625408918827,
+              "rust_umap": 0.9591644347744801
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.45197551474680037,
+              "python_umap_learn": 0.43572621035058373,
+              "rust_umap": 0.46143572621035056
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.8767443341625467,
+                "knn_overlap_at_15": 0.5332220367278799
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.8556222090649875,
+                "knn_overlap_at_15": 0.5248747913188655
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.6572619420108199,
+                "knn_overlap_at_15": 0.6107957707289917
+              }
+            }
+          }
+        },
+        "california_housing": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 1.4527826119992824,
+              "fit_std_sec": 0.008903721686527,
+              "fit_times_sec": [
+                1.4662780229991768,
+                1.4603161550003279,
+                1.4476982429987402,
+                1.4463161759995273,
+                1.4433044629986398
+              ],
+              "process_elapsed_sec": 11.863480309002625,
+              "process_max_rss_mb": 316.40234375,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 1.452,
+              "fit_std_sec": 0.006,
+              "fit_times_sec": [
+                1.455,
+                1.456,
+                1.451,
+                1.456,
+                1.442
+              ],
+              "process_elapsed_sec": 9.211229295000521,
+              "process_max_rss_mb": 219.4921875,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.95729166,
+              "fit_std_sec": 0.001607608,
+              "fit_times_sec": [
+                0.9554305,
+                0.956427559,
+                0.959093004,
+                0.959341035,
+                0.956166204
+              ],
+              "process_elapsed_sec": 5.756280516001425,
+              "process_max_rss_mb": 17.71484375,
+              "context": {
+                "mode": "fit",
+                "metric": "manhattan",
+                "knn_metric": "manhattan",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 2000,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.9653341089192379,
+              "python_umap_learn": 0.9671782667341089,
+              "rust_umap": 0.9672751306693643
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.3634999999999996,
+              "python_umap_learn": 0.3709999999999994,
+              "rust_umap": 0.36913333333333304
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.13525201644906518,
+                "knn_overlap_at_15": 0.6341999999999961
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.26982424513162173,
+                "knn_overlap_at_15": 0.6286666666666635
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.11545100395546552,
+                "knn_overlap_at_15": 0.6437999999999968
+              }
+            }
+          }
+        }
+      },
+      "cosine": {
+        "breast_cancer": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 0.16067995999910636,
+              "fit_std_sec": 0.0006886585096472898,
+              "fit_times_sec": [
+                0.1613712439975643,
+                0.15967475000070408,
+                0.1600321570003871,
+                0.16114055199795985,
+                0.16118109699891647
+              ],
+              "process_elapsed_sec": 4.123041105998709,
+              "process_max_rss_mb": 309.83203125,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.3088,
+              "fit_std_sec": 0.0052,
+              "fit_times_sec": [
+                0.31,
+                0.3,
+                0.309,
+                0.313,
+                0.312
+              ],
+              "process_elapsed_sec": 2.322685070997977,
+              "process_max_rss_mb": 188.39453125,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.117693766,
+              "fit_std_sec": 0.000306416,
+              "fit_times_sec": [
+                0.117956405,
+                0.117216614,
+                0.117855127,
+                0.117450759,
+                0.117989927
+              ],
+              "process_elapsed_sec": 0.7127509410020139,
+              "process_max_rss_mb": 4.59765625,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 569,
+            "trustworthiness_at_15": {
+              "python_umap_learn": 0.8932424341914675,
+              "rust_umap": 0.8972541420696079,
+              "r_uwot": 0.8988678378836551
+            },
+            "original_knn_recall_at_15": {
+              "python_umap_learn": 0.4355008787346232,
+              "rust_umap": 0.4390158172231995,
+              "r_uwot": 0.43760984182776896
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.15718912220595244,
+                "knn_overlap_at_15": 0.6438195664909221
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.11779639955283405,
+                "knn_overlap_at_15": 0.65553602811951
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.09763988569163293,
+                "knn_overlap_at_15": 0.6385471587580573
+              }
+            }
+          }
+        },
+        "digits": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 0.49037566380065983,
+              "fit_std_sec": 0.007638511447784716,
+              "fit_times_sec": [
+                0.48663542800204596,
+                0.5056478000005882,
+                0.48620359800042934,
+                0.4866033830003289,
+                0.48678810999990674
+              ],
+              "process_elapsed_sec": 6.08687553299751,
+              "process_max_rss_mb": 311.59375,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 0.6132,
+              "fit_std_sec": 0.0044,
+              "fit_times_sec": [
+                0.619,
+                0.616,
+                0.613,
+                0.609,
+                0.609
+              ],
+              "process_elapsed_sec": 4.153259235998121,
+              "process_max_rss_mb": 195.01953125,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.32970435,
+              "fit_std_sec": 0.000359607,
+              "fit_times_sec": [
+                0.329593121,
+                0.329392976,
+                0.329305448,
+                0.329972444,
+                0.330257759
+              ],
+              "process_elapsed_sec": 1.985293476998777,
+              "process_max_rss_mb": 7.77734375,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 1797,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.9730605123533586,
+              "python_umap_learn": 0.9734006341104229,
+              "rust_umap": 0.9725637137514882
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.48124652198107853,
+              "python_umap_learn": 0.4851419031719539,
+              "rust_umap": 0.4872194398070859
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.706333333075198,
+                "knn_overlap_at_15": 0.6566870710443301
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.9682381476340662,
+                "knn_overlap_at_15": 0.6399554813578161
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.977418365605675,
+                "knn_overlap_at_15": 0.6368020775366328
+              }
+            }
+          }
+        },
+        "california_housing": {
+          "fit_timing_and_process_memory": {
+            "python_umap_learn": {
+              "fit_mean_sec": 1.3461834905989236,
+              "fit_std_sec": 0.008252780519857974,
+              "fit_times_sec": [
+                1.3626278289993934,
+                1.34075204599867,
+                1.34277838199705,
+                1.3425930379999045,
+                1.3421661579995998
+              ],
+              "process_elapsed_sec": 11.23431872600122,
+              "process_max_rss_mb": 316.63671875,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "r_uwot": {
+              "fit_mean_sec": 1.4268,
+              "fit_std_sec": 0.0166,
+              "fit_times_sec": [
+                1.416,
+                1.407,
+                1.434,
+                1.427,
+                1.45
+              ],
+              "process_elapsed_sec": 9.03419412799849,
+              "process_max_rss_mb": 219.45703125,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            },
+            "rust_umap": {
+              "fit_mean_sec": 0.937301235,
+              "fit_std_sec": 0.008471161,
+              "fit_times_sec": [
+                0.953253802,
+                0.938743045,
+                0.932084693,
+                0.931874708,
+                0.930549928
+              ],
+              "process_elapsed_sec": 5.6339608950002,
+              "process_max_rss_mb": 17.46875,
+              "context": {
+                "mode": "fit",
+                "metric": "cosine",
+                "knn_metric": "cosine",
+                "precomputed_knn": true,
+                "warmup": 1,
+                "repeats": 5
+              }
+            }
+          },
+          "consistency": {
+            "sample_size_for_consistency": 2000,
+            "trustworthiness_at_15": {
+              "r_uwot": 0.9585640701399427,
+              "python_umap_learn": 0.9585097622660597,
+              "rust_umap": 0.9585658910807621
+            },
+            "original_knn_recall_at_15": {
+              "r_uwot": 0.3264666666666655,
+              "python_umap_learn": 0.3299999999999983,
+              "rust_umap": 0.33363333333333195
+            },
+            "pairwise": {
+              "python_umap_learn__vs__r_uwot": {
+                "procrustes_disparity": 0.368189323802498,
+                "knn_overlap_at_15": 0.6884666666666619
+              },
+              "python_umap_learn__vs__rust_umap": {
+                "procrustes_disparity": 0.288634132681282,
+                "knn_overlap_at_15": 0.656799999999996
+              },
+              "r_uwot__vs__rust_umap": {
+                "procrustes_disparity": 0.19658854871301118,
+                "knn_overlap_at_15": 0.6065333333333324
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "comparison_to_previous_report_real": {
+    "available": false
+  },
+  "quality_gate": {
+    "overall_pass": true,
+    "run_requirements": {
+      "min_warmup": 1,
+      "min_repeats": 5,
+      "observed_warmup": 1,
+      "observed_repeats": 5,
+      "warmup_pass": true,
+      "repeats_pass": true
+    },
+    "consistency_thresholds": {
+      "max_trust_gap": 0.03,
+      "max_recall_gap": 0.08,
+      "min_pairwise_overlap_at_15": 0.35
+    },
+    "checks": [
+      {
+        "group": "e2e_default_ann",
+        "dataset": "breast_cancer",
+        "metric": null,
+        "trust_gap": 0.0018922300117378832,
+        "recall_gap": 0.008670181605155425,
+        "min_pairwise_overlap_at_15": 0.5111892208553018,
+        "pass": true
+      },
+      {
+        "group": "e2e_default_ann",
+        "dataset": "digits",
+        "metric": null,
+        "trust_gap": 0.006019301867888238,
+        "recall_gap": 0.015692821368947618,
+        "min_pairwise_overlap_at_15": 0.5414950843999264,
+        "pass": true
+      },
+      {
+        "group": "e2e_default_ann",
+        "dataset": "california_housing",
+        "metric": null,
+        "trust_gap": 0.00803869499241272,
+        "recall_gap": 0.019533333333333514,
+        "min_pairwise_overlap_at_15": 0.48753333333333343,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "breast_cancer",
+        "metric": "euclidean",
+        "trust_gap": 0.008632628843525225,
+        "recall_gap": 0.01722319859402477,
+        "min_pairwise_overlap_at_15": 0.48084358523725856,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "digits",
+        "metric": "euclidean",
+        "trust_gap": 0.004955333924322125,
+        "recall_gap": 0.013912075681690839,
+        "min_pairwise_overlap_at_15": 0.5414208866629568,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "california_housing",
+        "metric": "euclidean",
+        "trust_gap": 0.003788635980441657,
+        "recall_gap": 0.009799999999999254,
+        "min_pairwise_overlap_at_15": 0.5725999999999982,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "breast_cancer",
+        "metric": "manhattan",
+        "trust_gap": 0.018881099373190713,
+        "recall_gap": 0.02062097246631517,
+        "min_pairwise_overlap_at_15": 0.4899824253075568,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "digits",
+        "metric": "manhattan",
+        "trust_gap": 0.0014018938825973715,
+        "recall_gap": 0.02570951585976683,
+        "min_pairwise_overlap_at_15": 0.5248747913188655,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "california_housing",
+        "metric": "manhattan",
+        "trust_gap": 0.0019410217501264482,
+        "recall_gap": 0.007499999999999785,
+        "min_pairwise_overlap_at_15": 0.6286666666666635,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "breast_cancer",
+        "metric": "cosine",
+        "trust_gap": 0.005625403692187558,
+        "recall_gap": 0.0035149384885763135,
+        "min_pairwise_overlap_at_15": 0.6385471587580573,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "digits",
+        "metric": "cosine",
+        "trust_gap": 0.0008369203589346785,
+        "recall_gap": 0.00597291782600734,
+        "min_pairwise_overlap_at_15": 0.6368020775366328,
+        "pass": true
+      },
+      {
+        "group": "algo_exact_shared_knn",
+        "dataset": "california_housing",
+        "metric": "cosine",
+        "trust_gap": 5.612881470240527e-05,
+        "recall_gap": 0.0071666666666664325,
+        "min_pairwise_overlap_at_15": 0.6065333333333324,
+        "pass": true
+      }
+    ],
+    "violations": []
+  }
+}

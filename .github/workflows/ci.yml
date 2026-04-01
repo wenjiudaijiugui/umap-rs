@@ -26,21 +26,36 @@ jobs:
               - 'benchmarks/**'
               - '.github/workflows/**'
 
-  rust-build-test:
+  rust-fmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Cargo fmt check
+        run: cargo fmt --manifest-path rust_umap/Cargo.toml --all --check
+
+  rust-verify:
+    needs: [rust-fmt]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: rust_umap
+      - name: Cargo clippy
+        run: cargo clippy --manifest-path rust_umap/Cargo.toml --all-targets -- -D warnings
       - name: Cargo test
         run: cargo test --manifest-path rust_umap/Cargo.toml
       - name: Release binaries
         run: cargo build --release --manifest-path rust_umap/Cargo.toml --bin fit_csv --bin bench_fit_csv
 
   consistency-smoke:
-    needs: [changes, rust-build-test]
+    needs: [changes, rust-verify]
     if: needs.changes.outputs.core_or_benchmark == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -64,7 +79,9 @@ jobs:
           python benchmarks/ci_consistency_smoke.py \
             --python-bin python \
             --rscript-bin Rscript \
-            --require-r | tee consistency-smoke.json
+            --require-r \
+            --gate-config benchmarks/gate_thresholds.json \
+            --output-json consistency-smoke.json
       - name: Upload consistency smoke artifact
         uses: actions/upload-artifact@v4
         with:
@@ -72,7 +89,7 @@ jobs:
           path: consistency-smoke.json
 
   ann-e2e-smoke:
-    needs: [changes, rust-build-test]
+    needs: [changes, rust-verify]
     if: needs.changes.outputs.core_or_benchmark == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -93,21 +110,42 @@ jobs:
           python benchmarks/ci_ann_smoke.py \
             --python-bin python \
             --rscript-bin "" \
-            --seed 42 \
-            --warmup 0 \
-            --repeats 1 \
-            --sample-cap 1200 \
-            --trust-gap 0.03 \
-            --recall-gap 0.08 \
-            --pairwise-min-overlap 0.35 | tee ann-e2e-smoke.json
+            --gate-config benchmarks/gate_thresholds.json \
+            --output-json ann-e2e-smoke.json
       - name: Upload ANN/e2e smoke artifact
         uses: actions/upload-artifact@v4
         with:
           name: ann-e2e-smoke
           path: ann-e2e-smoke.json
 
+  wave1-smoke:
+    needs: [changes, rust-verify]
+    if: needs.changes.outputs.core_or_benchmark == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust_umap
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Wave-1 reliability smoke gate
+        run: |
+          set -euo pipefail
+          python benchmarks/ci_wave1_smoke.py \
+            --manifest-path rust_umap/Cargo.toml \
+            --output-json wave1-smoke.json
+      - name: Upload Wave-1 smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wave1-smoke
+          path: wave1-smoke.json
+
   no-regression-smoke:
-    needs: [changes, consistency-smoke, ann-e2e-smoke]
+    needs: [changes, consistency-smoke, ann-e2e-smoke, wave1-smoke]
     if: needs.changes.outputs.core_or_benchmark == 'true'
     runs-on: ubuntu-latest
     strategy:
@@ -156,7 +194,9 @@ jobs:
           python benchmarks/ci_no_regression.py \
             --candidate-root "$GITHUB_WORKSPACE" \
             --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
-            --metric "${{ matrix.metric }}" | tee "no-regression-smoke-${{ matrix.metric }}.json"
+            --metric "${{ matrix.metric }}" \
+            --gate-config benchmarks/gate_thresholds.json \
+            --output-json "no-regression-smoke-${{ matrix.metric }}.json"
       - name: Upload no-regression artifact
         uses: actions/upload-artifact@v4
         with:

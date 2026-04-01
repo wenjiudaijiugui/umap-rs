@@ -48,6 +48,16 @@ jobs:
             --warmup 0 \
             --repeats 1 \
             --sample-cap-consistency 1200
+      - name: Run ecosystem benchmark ANN coverage smoke
+        run: |
+          python benchmarks/compare_ecosystem_python_binding.py \
+            --python-bin python \
+            --warmup 0 \
+            --repeats 1 \
+            --sample-cap-consistency 1200 \
+            --ensure-ann-coverage \
+            --report-json benchmarks/report_ecosystem_python_binding.ann.json \
+            --report-md benchmarks/report_ecosystem_python_binding.ann.md
       - name: Run ecosystem machine-readable gate
         run: |
           python benchmarks/ci_ecosystem_python_binding_gate.py \
@@ -59,3 +69,10 @@ jobs:
           path: |
             benchmarks/report_ecosystem_python_binding.json
             benchmarks/report_ecosystem_python_binding.md
+      - name: Upload ecosystem ANN coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ecosystem-python-binding-ann-report
+          path: |
+            benchmarks/report_ecosystem_python_binding.ann.json
+            benchmarks/report_ecosystem_python_binding.ann.md

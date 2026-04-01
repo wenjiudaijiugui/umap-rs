@@ -1,0 +1,128 @@
+{
+  "gate": "ann_e2e_smoke",
+  "strict": true,
+  "overall_pass": true,
+  "thresholds": {
+    "sample_cap": 1200,
+    "trust_gap": 0.03,
+    "recall_gap": 0.08,
+    "pairwise_min_overlap": 0.35
+  },
+  "failures": [],
+  "timestamp_unix": 1775012290,
+  "details": {
+    "impls": [
+      "python_umap_learn",
+      "rust_umap"
+    ],
+    "datasets": {
+      "breast_cancer": {
+        "runs": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 5.423484517999896,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 344.77734375,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              5.423484517999896
+            ],
+            "max_rss_samples_mb": [
+              344.77734375
+            ]
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.1364869520002685,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 4.375,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              0.1364869520002685
+            ],
+            "max_rss_samples_mb": [
+              4.375
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 569,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9161963987974533,
+            "rust_umap": 0.9143041687857154
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.39871118922085624,
+            "rust_umap": 0.4063268892794386
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.04179616340125942,
+              "knn_overlap_at_15": 0.6087873462214419
+            }
+          }
+        }
+      },
+      "digits": {
+        "runs": {
+          "python_umap_learn": {
+            "elapsed_mean_sec": 6.518578445000458,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 360.34375,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              6.518578445000458
+            ],
+            "max_rss_samples_mb": [
+              360.34375
+            ]
+          },
+          "rust_umap": {
+            "elapsed_mean_sec": 0.4392463129988755,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 6.875,
+            "max_rss_std_mb": 0.0,
+            "elapsed_samples_sec": [
+              0.4392463129988755
+            ],
+            "max_rss_samples_mb": [
+              6.875
+            ]
+          }
+        },
+        "consistency": {
+          "sample_size_for_consistency": 1200,
+          "trustworthiness_at_15": {
+            "python_umap_learn": 0.9595398848296045,
+            "rust_umap": 0.9660143018974795
+          },
+          "original_knn_recall_at_15": {
+            "python_umap_learn": 0.4536111111111104,
+            "rust_umap": 0.46688888888888785
+          },
+          "pairwise": {
+            "python_umap_learn__vs__rust_umap": {
+              "procrustes_disparity": 0.9039105569127577,
+              "knn_overlap_at_15": 0.614166666666668
+            }
+          }
+        }
+      }
+    },
+    "config": {
+      "seed": 42,
+      "warmup": 0,
+      "repeats": 1,
+      "sample_cap": 1200,
+      "thread_env": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "BLIS_NUM_THREADS": "1",
+        "NUMBA_NUM_THREADS": "1",
+        "VECLIB_MAXIMUM_THREADS": "1",
+        "NUMEXPR_NUM_THREADS": "1",
+        "PYTHONHASHSEED": "0"
+      },
+      "timing_mode": "e2e_default_ann"
+    }
+  }
+}

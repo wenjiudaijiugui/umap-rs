@@ -5,15 +5,18 @@ use std::path::Path;
 
 mod common_cli;
 use common_cli::{
-    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr,
-    write_csv,
+    extract_optional_args, parse_bool, parse_init, read_csv, read_csv_usize, read_sparse_csr, write_csv,
 };
+
 fn usage() {
     eprintln!(
         "Usage:\n  fit_csv <input.csv> <output.csv> <n_neighbors> <n_components> <n_epochs> <seed> \
           <init:random|spectral> <use_approx:bool> <approx_candidates> <approx_iters> \
           <approx_threshold> [mode:fit|fit_precomputed|transform|inverse] [extra args] \
-          [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine]\n\
+          [--metric euclidean|manhattan|cosine] [--knn-metric euclidean|manhattan|cosine] \n\
+          [--learning-rate <f32>] [--min-dist <f32>] [--spread <f32>] \n\
+          [--local-connectivity <f32>] [--set-op-mix-ratio <f32>] \n\
+          [--repulsion-strength <f32>] [--negative-sample-rate <usize>]\n\
           Optional CSR input (fit mode only): --csr-indptr <path> --csr-indices <path> --csr-data <path> --csr-n-cols <n>\n\
           mode=fit_precomputed extra args: <knn_idx.csv> <knn_dist.csv>\n\
           mode=transform|inverse extra args: <ref_input.csv>"
@@ -22,7 +25,7 @@ fn usage() {
 
 fn main() -> Result<(), Box<dyn Error>> {
     let mut args: Vec<String> = env::args().collect();
-    let (metric, knn_metric_opt, sparse_input) = extract_optional_args(&mut args)?;
+    let optional = extract_optional_args(&mut args)?;
     if args.len() < 12 {
         usage();
         return Err("insufficient arguments".into());
@@ -46,18 +49,18 @@ fn main() -> Result<(), Box<dyn Error>> {
     } else {
         "fit"
     };
-    if sparse_input.is_some() && mode != "fit" {
+    if optional.sparse_input.is_some() && mode != "fit" {
         return Err("CSR input is currently supported in fit mode only".into());
     }
-    if mode != "fit_precomputed" && knn_metric_opt.is_some() {
+    if mode != "fit_precomputed" && optional.knn_metric.is_some() {
         return Err("--knn-metric is only valid in fit_precomputed mode".into());
     }
 
-    let params = UmapParams {
+    let mut params = UmapParams {
         n_neighbors,
         n_components,
         n_epochs: Some(n_epochs),
-        metric,
+        metric: optional.metric,
         learning_rate: 1.0,
         min_dist: 0.1,
         spread: 1.0,
@@ -72,12 +75,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         approx_knn_iters,
         approx_knn_threshold,
     };
+    optional.overrides.apply_to(&mut params);
 
     let mut model = UmapModel::new(params);
 
     match mode {
         "fit" => {
-            let emb = if let Some(spec) = sparse_input.as_ref() {
+            let emb = if let Some(spec) = optional.sparse_input.as_ref() {
                 let x_csr = read_sparse_csr(spec)?;
                 model.fit_transform_sparse_csr(x_csr)?
             } else {
@@ -95,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let x = read_csv(input_path)?;
             let knn_idx = read_csv_usize(Path::new(&args[13]))?;
             let knn_dist = read_csv(Path::new(&args[14]))?;
-            let knn_metric = knn_metric_opt.unwrap_or(metric);
+            let knn_metric = optional.knn_metric.unwrap_or(optional.metric);
             let emb = model.fit_transform_with_knn_metric(&x, &knn_idx, &knn_dist, knn_metric)?;
             write_csv(output_path, &emb)?;
         }

@@ -2,15 +2,19 @@
 
 ## Setup
 - n_neighbors=15, n_components=2, n_epochs=200, init=random, seed=42
-- warmup=1, repeats=5, randomized_order_per_repeat=True
+- warmup=0, repeats=1, randomized_order_per_repeat=True
+- python_bin=/home/shenshang/miniforge3/envs/umap_bench/bin/python
+- rscript_bin=/home/shenshang/miniforge3/envs/umap_bench/bin/Rscript
 - groups: e2e_default_ann, algo_exact_shared_knn
+- e2e_metric=euclidean
+- algo_exact_metrics=euclidean,manhattan,cosine
 - thread pinning: OMP_NUM_THREADS=1, OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1, BLIS_NUM_THREADS=1, NUMBA_NUM_THREADS=1, VECLIB_MAXIMUM_THREADS=1, NUMEXPR_NUM_THREADS=1, PYTHONHASHSEED=0
 
 ## Datasets
 
 - breast_cancer: n_used=569, n_original=569, d=30
 - digits: n_used=1797, n_original=1797, d=64
-- california_housing: n_used=15000, n_original=20640, d=8
+- california_housing: n_used=4000, n_original=20640, d=8
 
 ## Group A: e2e_default_ann
 
@@ -18,9 +22,9 @@
 
 | Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
 |---|---:|---:|
-| python_umap_learn | 5.102 ± 0.044 | 345.4 ± 0.2 |
-| r_uwot | 0.765 ± 0.045 | 174.8 ± 0.1 |
-| rust_umap | 0.129 ± 0.002 | 4.2 ± 0.0 |
+| python_umap_learn | 5.123 ± 0.000 | 345.4 ± 0.0 |
+| r_uwot | 0.834 ± 0.000 | 174.6 ± 0.0 |
+| rust_umap | 0.136 ± 0.000 | 4.4 ± 0.0 |
 
 - sample_size_for_consistency: 569
 - trustworthiness@15:
@@ -36,116 +40,204 @@
 
 | Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
 |---|---:|---:|
-| python_umap_learn | 6.541 ± 0.027 | 359.5 ± 0.6 |
-| r_uwot | 1.145 ± 0.009 | 182.6 ± 0.1 |
-| rust_umap | 0.444 ± 0.005 | 6.7 ± 0.1 |
+| python_umap_learn | 6.504 ± 0.000 | 360.2 ± 0.0 |
+| r_uwot | 1.132 ± 0.000 | 182.6 ± 0.0 |
+| rust_umap | 0.443 ± 0.000 | 6.9 ± 0.0 |
 
-- sample_size_for_consistency: 1797
+- sample_size_for_consistency: 1000
 - trustworthiness@15:
-  - python_umap_learn: 0.967248
-  - r_uwot: 0.969163
-  - rust_umap: 0.973267
+  - python_umap_learn: 0.956440
+  - r_uwot: 0.963531
+  - rust_umap: 0.967299
 - original_knn_recall@15:
-  - python_umap_learn: 0.456279
-  - r_uwot: 0.465294
-  - rust_umap: 0.471972
+  - python_umap_learn: 0.458000
+  - r_uwot: 0.474400
+  - rust_umap: 0.474067
 
 ### Dataset: california_housing
 
 | Implementation | Elapsed mean±std (s) | Max RSS mean±std (MB) |
 |---|---:|---:|
-| python_umap_learn | 12.524 ± 0.283 | 470.1 ± 0.2 |
-| r_uwot | 5.996 ± 0.034 | 268.0 ± 0.1 |
-| rust_umap | 3.889 ± 0.099 | 33.8 ± 0.1 |
+| python_umap_learn | 11.367 ± 0.000 | 409.4 ± 0.0 |
+| r_uwot | 1.461 ± 0.000 | 195.8 ± 0.0 |
+| rust_umap | 1.065 ± 0.000 | 12.0 ± 0.0 |
 
-- sample_size_for_consistency: 2000
+- sample_size_for_consistency: 1000
 - trustworthiness@15:
-  - python_umap_learn: 0.968255
-  - r_uwot: 0.969491
-  - rust_umap: 0.966243
+  - python_umap_learn: 0.959369
+  - r_uwot: 0.964970
+  - rust_umap: 0.966473
 - original_knn_recall@15:
-  - python_umap_learn: 0.386100
-  - r_uwot: 0.393167
-  - rust_umap: 0.386833
+  - python_umap_learn: 0.423267
+  - r_uwot: 0.434267
+  - rust_umap: 0.434200
 
 ## Group B: algo_exact_shared_knn
 
-### Dataset: breast_cancer
+### Metric: euclidean
+
+#### Dataset: breast_cancer
 
 | Implementation | Fit mean±std (s) | Process max RSS (MB) |
 |---|---:|---:|
-| python_umap_learn | 0.189 ± 0.001 | 309.5 |
-| r_uwot | 0.309 ± 0.005 | 188.4 |
-| rust_umap | 0.147 ± 0.001 | 4.6 |
+| python_umap_learn | 1.303 ± 0.000 | 309.5 |
+| r_uwot | 0.341 ± 0.000 | 188.4 |
+| rust_umap | 0.119 ± 0.000 | 4.4 |
 
 - sample_size_for_consistency: 569
 - trustworthiness@15:
   - python_umap_learn: 0.916197
   - r_uwot: 0.913885
-  - rust_umap: 0.920500
+  - rust_umap: 0.922518
 - original_knn_recall@15:
   - python_umap_learn: 0.395079
   - r_uwot: 0.399649
-  - rust_umap: 0.411482
+  - rust_umap: 0.412302
 
-### Dataset: digits
-
-| Implementation | Fit mean±std (s) | Process max RSS (MB) |
-|---|---:|---:|
-| python_umap_learn | 0.807 ± 0.001 | 312.0 |
-| r_uwot | 0.624 ± 0.007 | 195.4 |
-| rust_umap | 0.417 ± 0.000 | 7.7 |
-
-- sample_size_for_consistency: 1797
-- trustworthiness@15:
-  - python_umap_learn: 0.967185
-  - r_uwot: 0.970218
-  - rust_umap: 0.971649
-- original_knn_recall@15:
-  - python_umap_learn: 0.454684
-  - r_uwot: 0.466184
-  - rust_umap: 0.464144
-
-### Dataset: california_housing
+#### Dataset: digits
 
 | Implementation | Fit mean±std (s) | Process max RSS (MB) |
 |---|---:|---:|
-| python_umap_learn | 4.123 ± 0.005 | 333.6 |
-| r_uwot | 3.939 ± 0.034 | 265.1 |
-| rust_umap | 3.523 ± 0.019 | 39.0 |
+| python_umap_learn | 1.921 ± 0.000 | 312.1 |
+| r_uwot | 0.656 ± 0.000 | 194.7 |
+| rust_umap | 0.339 ± 0.000 | 7.0 |
 
-- sample_size_for_consistency: 2000
+- sample_size_for_consistency: 1000
 - trustworthiness@15:
-  - python_umap_learn: 0.967803
-  - r_uwot: 0.966221
-  - rust_umap: 0.968676
+  - python_umap_learn: 0.957234
+  - r_uwot: 0.960807
+  - rust_umap: 0.965704
 - original_knn_recall@15:
-  - python_umap_learn: 0.393533
-  - r_uwot: 0.383900
-  - rust_umap: 0.393800
+  - python_umap_learn: 0.462200
+  - r_uwot: 0.471533
+  - rust_umap: 0.474867
 
-## Comparison vs Previous Single-Run report_real.json
+#### Dataset: california_housing
 
-### Dataset: breast_cancer
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 2.235 ± 0.000 | 314.6 |
+| r_uwot | 1.215 ± 0.000 | 210.5 |
+| rust_umap | 0.752 ± 0.000 | 14.6 |
 
-| Implementation | old elapsed (s) | new elapsed mean (s) | new/old elapsed | old RSS (MB) | new RSS mean (MB) | new/old RSS |
-|---|---:|---:|---:|---:|---:|---:|
-| python_umap_learn | 5.412 | 5.102 | 0.943 | 348.9 | 345.4 | 0.990 |
-| r_uwot | 0.788 | 0.765 | 0.970 | 176.6 | 174.8 | 0.989 |
-| rust_umap | 0.146 | 0.129 | 0.883 | 4.1 | 4.2 | 1.030 |
+- sample_size_for_consistency: 1000
+- trustworthiness@15:
+  - python_umap_learn: 0.962496
+  - r_uwot: 0.966558
+  - rust_umap: 0.966600
+- original_knn_recall@15:
+  - python_umap_learn: 0.432800
+  - r_uwot: 0.448933
+  - rust_umap: 0.446133
 
-### Dataset: digits
+### Metric: manhattan
 
-| Implementation | old elapsed (s) | new elapsed mean (s) | new/old elapsed | old RSS (MB) | new RSS mean (MB) | new/old RSS |
-|---|---:|---:|---:|---:|---:|---:|
-| python_umap_learn | 6.667 | 6.541 | 0.981 | 362.1 | 359.5 | 0.993 |
-| r_uwot | 1.188 | 1.145 | 0.963 | 184.5 | 182.6 | 0.990 |
-| rust_umap | 0.440 | 0.444 | 1.010 | 6.4 | 6.7 | 1.051 |
+#### Dataset: breast_cancer
 
-### Dataset: california_housing
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 1.521 ± 0.000 | 309.7 |
+| r_uwot | 0.330 ± 0.000 | 188.1 |
+| rust_umap | 0.119 ± 0.000 | 4.4 |
 
-| Implementation | old elapsed (s) | new elapsed mean (s) | new/old elapsed | old RSS (MB) | new RSS mean (MB) | new/old RSS |
-|---|---:|---:|---:|---:|---:|---:|
-| python_umap_learn | 12.715 | 12.524 | 0.985 | 472.3 | 470.1 | 0.995 |
-| r_uwot | 6.026 | 5.996 | 0.995 | 270.1 | 268.0 | 0.992 |
-| rust_umap | 3.895 | 3.889 | 0.999 | 33.6 | 33.8 | 1.005 |
+- sample_size_for_consistency: 569
+- trustworthiness@15:
+  - python_umap_learn: 0.885940
+  - r_uwot: 0.899416
+  - rust_umap: 0.904821
+- original_knn_recall@15:
+  - python_umap_learn: 0.387698
+  - r_uwot: 0.403281
+  - rust_umap: 0.408319
+
+#### Dataset: digits
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 2.415 ± 0.000 | 312.2 |
+| r_uwot | 0.656 ± 0.000 | 195.1 |
+| rust_umap | 0.340 ± 0.000 | 7.0 |
+
+- sample_size_for_consistency: 1000
+- trustworthiness@15:
+  - python_umap_learn: 0.952444
+  - r_uwot: 0.951816
+  - rust_umap: 0.954473
+- original_knn_recall@15:
+  - python_umap_learn: 0.444133
+  - r_uwot: 0.448733
+  - rust_umap: 0.460533
+
+#### Dataset: california_housing
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 2.294 ± 0.000 | 314.5 |
+| r_uwot | 1.231 ± 0.000 | 210.6 |
+| rust_umap | 0.741 ± 0.000 | 14.5 |
+
+- sample_size_for_consistency: 1000
+- trustworthiness@15:
+  - python_umap_learn: 0.957255
+  - r_uwot: 0.956148
+  - rust_umap: 0.956414
+- original_knn_recall@15:
+  - python_umap_learn: 0.423533
+  - r_uwot: 0.414000
+  - rust_umap: 0.421400
+
+### Metric: cosine
+
+#### Dataset: breast_cancer
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 1.279 ± 0.000 | 309.1 |
+| r_uwot | 0.336 ± 0.000 | 188.4 |
+| rust_umap | 0.117 ± 0.000 | 4.4 |
+
+- sample_size_for_consistency: 569
+- trustworthiness@15:
+  - python_umap_learn: 0.893242
+  - r_uwot: 0.898868
+  - rust_umap: 0.897254
+- original_knn_recall@15:
+  - python_umap_learn: 0.435501
+  - r_uwot: 0.437610
+  - rust_umap: 0.439016
+
+#### Dataset: digits
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 1.616 ± 0.000 | 311.5 |
+| r_uwot | 0.653 ± 0.000 | 195.3 |
+| rust_umap | 0.346 ± 0.000 | 7.1 |
+
+- sample_size_for_consistency: 1000
+- trustworthiness@15:
+  - python_umap_learn: 0.966625
+  - r_uwot: 0.965524
+  - rust_umap: 0.968654
+- original_knn_recall@15:
+  - python_umap_learn: 0.480067
+  - r_uwot: 0.475733
+  - rust_umap: 0.475467
+
+#### Dataset: california_housing
+
+| Implementation | Fit mean±std (s) | Process max RSS (MB) |
+|---|---:|---:|
+| python_umap_learn | 2.247 ± 0.000 | 314.6 |
+| r_uwot | 1.213 ± 0.000 | 210.8 |
+| rust_umap | 0.718 ± 0.000 | 14.4 |
+
+- sample_size_for_consistency: 1000
+- trustworthiness@15:
+  - python_umap_learn: 0.955124
+  - r_uwot: 0.952817
+  - rust_umap: 0.952803
+- original_knn_recall@15:
+  - python_umap_learn: 0.401667
+  - r_uwot: 0.390933
+  - rust_umap: 0.403200

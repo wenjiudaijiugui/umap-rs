@@ -31,6 +31,14 @@ REPORT_JSON = BENCH_DIR / "report_real_fair.json"
 REPORT_MD = BENCH_DIR / "report_real_fair.md"
 PREVIOUS_REPORT_JSON = BENCH_DIR / "report_real.json"
 
+DEFAULT_QUALITY_GATE = {
+    "min_warmup": 1,
+    "min_repeats": 5,
+    "max_trust_gap": 0.03,
+    "max_recall_gap": 0.08,
+    "min_pairwise_overlap": 0.35,
+}
+
 DEFAULT_PYTHON_BIN = Path(
     os.environ.get(
         "UMAP_BENCH_PYTHON",
@@ -59,6 +67,7 @@ N_NEIGHBORS = 15
 N_COMPONENTS = 2
 N_EPOCHS = 200
 INIT = "random"
+SUPPORTED_METRICS = ("euclidean", "manhattan", "cosine")
 
 IMPLS = ["python_umap_learn", "r_uwot", "rust_umap"]
 
@@ -102,6 +111,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sample-cap-consistency", type=int, default=2000)
     p.add_argument("--python-bin", default=str(DEFAULT_PYTHON_BIN))
     p.add_argument("--rscript-bin", default=str(DEFAULT_RSCRIPT_BIN))
+    p.add_argument(
+        "--metrics",
+        default="euclidean,manhattan,cosine",
+        help="comma-separated metrics for algo_exact_shared_knn group",
+    )
+    p.add_argument("--report-json", default=str(REPORT_JSON))
+    p.add_argument("--report-md", default=str(REPORT_MD))
+    p.add_argument("--quality-gate-min-warmup", type=int, default=DEFAULT_QUALITY_GATE["min_warmup"])
+    p.add_argument("--quality-gate-min-repeats", type=int, default=DEFAULT_QUALITY_GATE["min_repeats"])
+    p.add_argument("--quality-gate-max-trust-gap", type=float, default=DEFAULT_QUALITY_GATE["max_trust_gap"])
+    p.add_argument("--quality-gate-max-recall-gap", type=float, default=DEFAULT_QUALITY_GATE["max_recall_gap"])
+    p.add_argument(
+        "--quality-gate-min-pairwise-overlap",
+        type=float,
+        default=DEFAULT_QUALITY_GATE["min_pairwise_overlap"],
+    )
     return p.parse_args()
 
 
@@ -132,6 +157,20 @@ def _unique_non_empty(items: List[str]) -> List[str]:
         out.append(value)
         seen.add(value)
     return out
+
+
+def parse_metrics(raw: str) -> List[str]:
+    metrics = _unique_non_empty(raw.split(","))
+    if not metrics:
+        raise ValueError("--metrics must contain at least one metric")
+    invalid = [metric for metric in metrics if metric not in SUPPORTED_METRICS]
+    if invalid:
+        raise ValueError(
+            "unsupported metric(s): "
+            + ", ".join(invalid)
+            + f" (expected one of: {', '.join(SUPPORTED_METRICS)})"
+        )
+    return metrics
 
 
 def _time_candidates() -> List[str]:
@@ -290,8 +329,14 @@ def load_real_datasets(seed: int, large_max_samples: int) -> List[DatasetSpec]:
     return specs
 
 
-def compute_shared_exact_knn(x: np.ndarray, k: int, idx_path: Path, dist_path: Path) -> np.ndarray:
-    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="brute", metric="euclidean", n_jobs=1)
+def compute_shared_exact_knn(
+    x: np.ndarray,
+    k: int,
+    metric: str,
+    idx_path: Path,
+    dist_path: Path,
+) -> np.ndarray:
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="brute", metric=metric, n_jobs=1)
     nbrs.fit(x)
     dists, idx = nbrs.kneighbors(x)
     idx = idx[:, 1 : k + 1].astype(np.int64)
@@ -358,6 +403,7 @@ def algo_exact_cmd(
     impl: str,
     data_path: Path,
     out_path: Path,
+    metric: str,
     seed: int,
     warmup: int,
     repeats: int,
@@ -383,6 +429,8 @@ def algo_exact_cmd(
             str(seed),
             "--init",
             INIT,
+            "--metric",
+            metric,
             "--warmup",
             str(warmup),
             "--repeats",
@@ -403,6 +451,7 @@ def algo_exact_cmd(
             str(N_EPOCHS),
             str(seed),
             INIT,
+            metric,
             str(warmup),
             str(repeats),
             str(idx_path),
@@ -426,6 +475,10 @@ def algo_exact_cmd(
             str(repeats),
             str(idx_path),
             str(dist_path),
+            "--metric",
+            metric,
+            "--knn-metric",
+            metric,
         ]
     raise ValueError(f"unknown impl: {impl}")
 
@@ -603,6 +656,7 @@ def benchmark_e2e(
 def benchmark_algo_exact(
     spec: DatasetSpec,
     data_path: Path,
+    metric: str,
     seed: int,
     warmup: int,
     repeats: int,
@@ -611,7 +665,7 @@ def benchmark_algo_exact(
     idx_path: Path,
     dist_path: Path,
 ) -> Dict[str, object]:
-    print(f"[algo_exact][dataset={spec.name}] warmup={warmup}, repeats={repeats}")
+    print(f"[algo_exact][dataset={spec.name}][metric={metric}] warmup={warmup}, repeats={repeats}")
     rng = np.random.default_rng(seed + spec.used_samples + 202)
     order = list(rng.permutation(IMPLS))
     print(f"  [algo_exact][{spec.name}] invocation_order={order}")
@@ -620,9 +674,19 @@ def benchmark_algo_exact(
     final_embedding_paths: Dict[str, Path] = {}
 
     for impl in order:
-        out_path = OUT_DIR / f"{spec.name}__{impl}__algo_exact.csv"
-        time_path = TIME_DIR / f"{spec.name}__{impl}__algo_exact.time.txt"
-        cmd = algo_exact_cmd(impl, data_path, out_path, seed, warmup, repeats, idx_path, dist_path)
+        out_path = OUT_DIR / f"{spec.name}__{impl}__algo_exact__{metric}.csv"
+        time_path = TIME_DIR / f"{spec.name}__{impl}__algo_exact__{metric}.time.txt"
+        cmd = algo_exact_cmd(
+            impl,
+            data_path,
+            out_path,
+            metric,
+            seed,
+            warmup,
+            repeats,
+            idx_path,
+            dist_path,
+        )
         run = run_timed(cmd, time_path)
         payload = parse_json_line(run.stdout)
         summary[impl] = {
@@ -696,6 +760,90 @@ def compare_with_previous(previous_report: Optional[Dict[str, object]], current_
     return out
 
 
+def _float_gap(values: Dict[str, float]) -> float:
+    arr = [float(v) for v in values.values()]
+    if not arr:
+        return float("nan")
+    return float(max(arr) - min(arr))
+
+
+def evaluate_quality_gate(report: Dict[str, object], thresholds: Dict[str, float]) -> Dict[str, object]:
+    config = report["config"]
+    checks: List[Dict[str, object]] = []
+    violations: List[str] = []
+
+    observed_warmup = int(config["warmup"])
+    observed_repeats = int(config["repeats"])
+    warmup_pass = observed_warmup >= int(thresholds["min_warmup"])
+    repeats_pass = observed_repeats >= int(thresholds["min_repeats"])
+    if not warmup_pass:
+        violations.append(
+            f"warmup requirement not met: observed={observed_warmup}, required>={int(thresholds['min_warmup'])}"
+        )
+    if not repeats_pass:
+        violations.append(
+            f"repeats requirement not met: observed={observed_repeats}, required>={int(thresholds['min_repeats'])}"
+        )
+
+    def assess_consistency(group: str, dataset: str, consistency: Dict[str, object], metric: Optional[str] = None) -> None:
+        trust_gap = _float_gap(consistency["trustworthiness_at_15"])
+        recall_gap = _float_gap(consistency["original_knn_recall_at_15"])
+        pairwise = consistency.get("pairwise", {})
+        overlaps = [float(v["knn_overlap_at_15"]) for v in pairwise.values()] if isinstance(pairwise, dict) else []
+        min_overlap = min(overlaps) if overlaps else 1.0
+
+        pass_trust = trust_gap <= float(thresholds["max_trust_gap"])
+        pass_recall = recall_gap <= float(thresholds["max_recall_gap"])
+        pass_overlap = min_overlap >= float(thresholds["min_pairwise_overlap"])
+        item_pass = pass_trust and pass_recall and pass_overlap
+
+        checks.append(
+            {
+                "group": group,
+                "dataset": dataset,
+                "metric": metric,
+                "trust_gap": trust_gap,
+                "recall_gap": recall_gap,
+                "min_pairwise_overlap_at_15": min_overlap,
+                "pass": item_pass,
+            }
+        )
+        if not item_pass:
+            label = f"{group}/{dataset}" + (f"/{metric}" if metric else "")
+            violations.append(
+                f"{label}: trust_gap={trust_gap:.6f} (<= {float(thresholds['max_trust_gap']):.6f}), "
+                f"recall_gap={recall_gap:.6f} (<= {float(thresholds['max_recall_gap']):.6f}), "
+                f"min_pairwise_overlap={min_overlap:.6f} (>= {float(thresholds['min_pairwise_overlap']):.6f})"
+            )
+
+    for ds_name, ds_payload in report["groups"]["e2e_default_ann"].items():
+        assess_consistency("e2e_default_ann", ds_name, ds_payload["consistency"])
+
+    for metric, metric_payload in report["groups"]["algo_exact_shared_knn"].items():
+        for ds_name, ds_payload in metric_payload.items():
+            assess_consistency("algo_exact_shared_knn", ds_name, ds_payload["consistency"], metric=metric)
+
+    overall_pass = warmup_pass and repeats_pass and len(violations) == 0
+    return {
+        "overall_pass": overall_pass,
+        "run_requirements": {
+            "min_warmup": int(thresholds["min_warmup"]),
+            "min_repeats": int(thresholds["min_repeats"]),
+            "observed_warmup": observed_warmup,
+            "observed_repeats": observed_repeats,
+            "warmup_pass": warmup_pass,
+            "repeats_pass": repeats_pass,
+        },
+        "consistency_thresholds": {
+            "max_trust_gap": float(thresholds["max_trust_gap"]),
+            "max_recall_gap": float(thresholds["max_recall_gap"]),
+            "min_pairwise_overlap_at_15": float(thresholds["min_pairwise_overlap"]),
+        },
+        "checks": checks,
+        "violations": violations,
+    }
+
+
 def main() -> None:
     global PYTHON_BIN, RSCRIPT_BIN
     args = parse_args()
@@ -703,6 +851,11 @@ def main() -> None:
     RSCRIPT_BIN = Path(args.rscript_bin)
     ensure_dirs()
     build_rust_binaries()
+    metrics = parse_metrics(args.metrics)
+    report_json = Path(args.report_json)
+    report_md = Path(args.report_md)
+    report_json.parent.mkdir(parents=True, exist_ok=True)
+    report_md.parent.mkdir(parents=True, exist_ok=True)
 
     datasets = load_real_datasets(seed=args.seed, large_max_samples=args.large_max_samples)
 
@@ -722,22 +875,26 @@ def main() -> None:
                 "e2e_default_ann",
                 "algo_exact_shared_knn",
             ],
-            "metric": "euclidean",
+            "e2e_metric": "euclidean",
+            "algo_exact_metrics": metrics,
             "datasets": [],
         },
         "groups": {
             "e2e_default_ann": {},
-            "algo_exact_shared_knn": {},
+            "algo_exact_shared_knn": {metric: {} for metric in metrics},
         },
     }
 
     for spec in datasets:
         data_path = DATA_DIR / f"{spec.name}.csv"
-        idx_path = KNN_DIR / f"{spec.name}__knn_idx.csv"
-        dist_path = KNN_DIR / f"{spec.name}__knn_dist.csv"
-
         save_dataset_csv(data_path, spec.x)
-        orig_knn_idx = compute_shared_exact_knn(spec.x, N_NEIGHBORS, idx_path, dist_path)
+        e2e_orig_knn_idx = compute_shared_exact_knn(
+            spec.x,
+            N_NEIGHBORS,
+            "euclidean",
+            KNN_DIR / f"{spec.name}__knn_idx__euclidean.csv",
+            KNN_DIR / f"{spec.name}__knn_dist__euclidean.csv",
+        )
 
         report["config"]["datasets"].append(
             {
@@ -755,22 +912,27 @@ def main() -> None:
             warmup=args.warmup,
             repeats=args.repeats,
             sample_cap_consistency=args.sample_cap_consistency,
-            orig_knn_idx=orig_knn_idx,
+            orig_knn_idx=e2e_orig_knn_idx,
         )
         report["groups"]["e2e_default_ann"][spec.name] = e2e_result
 
-        algo_result = benchmark_algo_exact(
-            spec=spec,
-            data_path=data_path,
-            seed=args.seed,
-            warmup=args.warmup,
-            repeats=args.repeats,
-            sample_cap_consistency=args.sample_cap_consistency,
-            orig_knn_idx=orig_knn_idx,
-            idx_path=idx_path,
-            dist_path=dist_path,
-        )
-        report["groups"]["algo_exact_shared_knn"][spec.name] = algo_result
+        for metric in metrics:
+            idx_path = KNN_DIR / f"{spec.name}__knn_idx__{metric}.csv"
+            dist_path = KNN_DIR / f"{spec.name}__knn_dist__{metric}.csv"
+            orig_knn_idx = compute_shared_exact_knn(spec.x, N_NEIGHBORS, metric, idx_path, dist_path)
+            algo_result = benchmark_algo_exact(
+                spec=spec,
+                data_path=data_path,
+                metric=metric,
+                seed=args.seed,
+                warmup=args.warmup,
+                repeats=args.repeats,
+                sample_cap_consistency=args.sample_cap_consistency,
+                orig_knn_idx=orig_knn_idx,
+                idx_path=idx_path,
+                dist_path=dist_path,
+            )
+            report["groups"]["algo_exact_shared_knn"][metric][spec.name] = algo_result
 
     previous = None
     if PREVIOUS_REPORT_JSON.exists():
@@ -780,8 +942,16 @@ def main() -> None:
         previous_report=previous,
         current_e2e=report["groups"]["e2e_default_ann"],
     )
+    quality_gate_thresholds = {
+        "min_warmup": args.quality_gate_min_warmup,
+        "min_repeats": args.quality_gate_min_repeats,
+        "max_trust_gap": args.quality_gate_max_trust_gap,
+        "max_recall_gap": args.quality_gate_max_recall_gap,
+        "min_pairwise_overlap": args.quality_gate_min_pairwise_overlap,
+    }
+    report["quality_gate"] = evaluate_quality_gate(report, quality_gate_thresholds)
 
-    REPORT_JSON.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    report_json.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
     lines: List[str] = []
     lines.append("# Fair Real-Dataset UMAP Benchmark Report")
@@ -794,6 +964,8 @@ def main() -> None:
     lines.append(f"- python_bin={PYTHON_BIN}")
     lines.append(f"- rscript_bin={RSCRIPT_BIN}")
     lines.append("- groups: e2e_default_ann, algo_exact_shared_knn")
+    lines.append(f"- e2e_metric=euclidean")
+    lines.append(f"- algo_exact_metrics={','.join(metrics)}")
     lines.append("- thread pinning: " + ", ".join([f"{k}={v}" for k, v in THREAD_ENV.items()]))
     lines.append("")
     lines.append("## Datasets")
@@ -830,27 +1002,30 @@ def main() -> None:
 
     lines.append("## Group B: algo_exact_shared_knn")
     lines.append("")
-    for ds_name in report["groups"]["algo_exact_shared_knn"]:
-        ds = report["groups"]["algo_exact_shared_knn"][ds_name]
-        lines.append(f"### Dataset: {ds_name}")
+    for metric in metrics:
+        lines.append(f"### Metric: {metric}")
         lines.append("")
-        lines.append("| Implementation | Fit mean±std (s) | Process max RSS (MB) |")
-        lines.append("|---|---:|---:|")
-        for impl in IMPLS:
-            m = ds["fit_timing_and_process_memory"][impl]
-            lines.append(
-                f"| {impl} | {m['fit_mean_sec']:.3f} ± {m['fit_std_sec']:.3f} | {m['process_max_rss_mb']:.1f} |"
-            )
-        c = ds["consistency"]
-        lines.append("")
-        lines.append(f"- sample_size_for_consistency: {c['sample_size_for_consistency']}")
-        lines.append("- trustworthiness@15:")
-        for impl in IMPLS:
-            lines.append(f"  - {impl}: {c['trustworthiness_at_15'][impl]:.6f}")
-        lines.append("- original_knn_recall@15:")
-        for impl in IMPLS:
-            lines.append(f"  - {impl}: {c['original_knn_recall_at_15'][impl]:.6f}")
-        lines.append("")
+        for ds_name in report["groups"]["algo_exact_shared_knn"][metric]:
+            ds = report["groups"]["algo_exact_shared_knn"][metric][ds_name]
+            lines.append(f"#### Dataset: {ds_name}")
+            lines.append("")
+            lines.append("| Implementation | Fit mean±std (s) | Process max RSS (MB) |")
+            lines.append("|---|---:|---:|")
+            for impl in IMPLS:
+                m = ds["fit_timing_and_process_memory"][impl]
+                lines.append(
+                    f"| {impl} | {m['fit_mean_sec']:.3f} ± {m['fit_std_sec']:.3f} | {m['process_max_rss_mb']:.1f} |"
+                )
+            c = ds["consistency"]
+            lines.append("")
+            lines.append(f"- sample_size_for_consistency: {c['sample_size_for_consistency']}")
+            lines.append("- trustworthiness@15:")
+            for impl in IMPLS:
+                lines.append(f"  - {impl}: {c['trustworthiness_at_15'][impl]:.6f}")
+            lines.append("- original_knn_recall@15:")
+            for impl in IMPLS:
+                lines.append(f"  - {impl}: {c['original_knn_recall_at_15'][impl]:.6f}")
+            lines.append("")
 
     cmp = report["comparison_to_previous_report_real"]
     if cmp.get("available"):
@@ -870,8 +1045,44 @@ def main() -> None:
                 )
             lines.append("")
 
-    REPORT_MD.write_text("\n".join(lines), encoding="utf-8")
-    print(f"\nReport written to:\n  - {REPORT_JSON}\n  - {REPORT_MD}")
+    qg = report["quality_gate"]
+    req = qg["run_requirements"]
+    thr = qg["consistency_thresholds"]
+    lines.append("## Quality Gate Verdict")
+    lines.append("")
+    lines.append(f"- overall_pass: {'PASS' if qg['overall_pass'] else 'FAIL'}")
+    lines.append(
+        f"- run policy: warmup>={req['min_warmup']}, repeats>={req['min_repeats']} "
+        f"(observed warmup={req['observed_warmup']}, repeats={req['observed_repeats']})"
+    )
+    lines.append(
+        f"- consistency policy: trust_gap<={thr['max_trust_gap']:.6f}, "
+        f"recall_gap<={thr['max_recall_gap']:.6f}, "
+        f"min_pairwise_overlap@15>={thr['min_pairwise_overlap_at_15']:.6f}"
+    )
+    lines.append("")
+    lines.append("| Group | Dataset | Metric | trust_gap | recall_gap | min_pairwise_overlap@15 | Pass |")
+    lines.append("|---|---|---|---:|---:|---:|---:|")
+    for item in qg["checks"]:
+        metric = item["metric"] if item["metric"] is not None else "-"
+        lines.append(
+            f"| {item['group']} | {item['dataset']} | {metric} | "
+            f"{item['trust_gap']:.6f} | {item['recall_gap']:.6f} | "
+            f"{item['min_pairwise_overlap_at_15']:.6f} | {'yes' if item['pass'] else 'no'} |"
+        )
+    lines.append("")
+    if qg["violations"]:
+        lines.append("### Quality Gate Violations")
+        lines.append("")
+        for violation in qg["violations"]:
+            lines.append(f"- {violation}")
+        lines.append("")
+    else:
+        lines.append("- violations: none")
+        lines.append("")
+
+    report_md.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nReport written to:\n  - {report_json}\n  - {report_md}")
 
 
 if __name__ == "__main__":

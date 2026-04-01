@@ -1,8 +1,8 @@
 {
   "config": {
     "seed": 42,
-    "warmup": 1,
-    "repeats": 2,
+    "warmup": 0,
+    "repeats": 1,
     "dataset_type": "real",
     "n_neighbors": 15,
     "n_components": 2,
@@ -35,35 +35,31 @@
     }
   },
   "groups": {
-    "e2e_default_ann": {
+    "e2e_mixed_knn_strategy": {
       "breast_cancer": {
         "speed_and_memory": {
           "python_umap_learn": {
-            "elapsed_mean_sec": 5.437759954500507,
-            "elapsed_std_sec": 0.3598311815003399,
-            "max_rss_mean_mb": 346.080078125,
-            "max_rss_std_mb": 0.779296875,
+            "elapsed_mean_sec": 5.28070122400095,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 345.44140625,
+            "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              5.797591136000847,
-              5.077928773000167
+              5.28070122400095
             ],
             "max_rss_samples_mb": [
-              345.30078125,
-              346.859375
+              345.44140625
             ]
           },
           "rust_umap_py": {
-            "elapsed_mean_sec": 0.9679755420002039,
-            "elapsed_std_sec": 0.0009792149994609645,
-            "max_rss_mean_mb": 31.548828125,
-            "max_rss_std_mb": 0.001953125,
+            "elapsed_mean_sec": 0.17664541200065287,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 29.9375,
+            "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              0.9669963270007429,
-              0.9689547569996648
+              0.17664541200065287
             ],
             "max_rss_samples_mb": [
-              31.55078125,
-              31.546875
+              29.9375
             ]
           }
         },
@@ -83,85 +79,117 @@
               "knn_overlap_at_15": 0.6087873462214419
             }
           }
+        },
+        "knn_strategy": {
+          "equivalence": "strict_exact",
+          "note": "Both implementations used exact kNN for this dataset.",
+          "python_umap_learn": {
+            "strategy": "exact",
+            "force_approximation_algorithm": false
+          },
+          "rust_umap_py": {
+            "strategy": "exact",
+            "use_approximate_knn": true,
+            "approx_knn_threshold": 4096
+          }
         }
       },
       "digits": {
         "speed_and_memory": {
           "python_umap_learn": {
-            "elapsed_mean_sec": 6.6675292660002015,
-            "elapsed_std_sec": 0.14337496400003147,
-            "max_rss_mean_mb": 358.875,
-            "max_rss_std_mb": 0.23046875,
+            "elapsed_mean_sec": 6.586295286000677,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 358.8515625,
+            "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              6.810904230000233,
-              6.52415430200017
+              6.586295286000677
             ],
             "max_rss_samples_mb": [
-              358.64453125,
-              359.10546875
+              358.8515625
             ]
           },
           "rust_umap_py": {
-            "elapsed_mean_sec": 5.297947173000466,
-            "elapsed_std_sec": 0.07739414099978603,
-            "max_rss_mean_mb": 34.423828125,
-            "max_rss_std_mb": 0.001953125,
+            "elapsed_mean_sec": 0.4924567929992918,
+            "elapsed_std_sec": 0.0,
+            "max_rss_mean_mb": 33.05078125,
+            "max_rss_std_mb": 0.0,
             "elapsed_samples_sec": [
-              5.375341314000252,
-              5.22055303200068
+              0.4924567929992918
             ],
             "max_rss_samples_mb": [
-              34.42578125,
-              34.421875
+              33.05078125
             ]
           }
         },
         "consistency": {
-          "sample_size_for_consistency": 1500,
+          "sample_size_for_consistency": 1000,
           "trustworthiness_at_15": {
-            "rust_umap_py": 0.96967315128263,
-            "python_umap_learn": 0.9631748739938313
+            "python_umap_learn": 0.9564395087001023,
+            "rust_umap_py": 0.9672993517570795
           },
           "original_knn_recall_at_15": {
-            "rust_umap_py": 0.45706666666666584,
-            "python_umap_learn": 0.44053333333333344
+            "python_umap_learn": 0.45799999999999885,
+            "rust_umap_py": 0.4740666666666656
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.925749723440755,
-              "knn_overlap_at_15": 0.5838666666666665
+              "procrustes_disparity": 0.9521765611010129,
+              "knn_overlap_at_15": 0.6242666666666679
             }
+          }
+        },
+        "knn_strategy": {
+          "equivalence": "strict_exact",
+          "note": "Both implementations used exact kNN for this dataset.",
+          "python_umap_learn": {
+            "strategy": "exact",
+            "force_approximation_algorithm": false
+          },
+          "rust_umap_py": {
+            "strategy": "exact",
+            "use_approximate_knn": true,
+            "approx_knn_threshold": 4096
           }
         }
       }
     },
-    "algo_exact_shared_knn": {
+    "algo_exact_shared_knn_exact": {
       "breast_cancer": {
         "fit_timing_and_process_memory": {
           "python_umap_learn": {
-            "fit_mean_sec": 0.20308746899991093,
-            "fit_std_sec": 0.002659864999259298,
+            "fit_mean_sec": 1.326924233999307,
+            "fit_std_sec": 0.0,
             "fit_times_sec": [
-              0.20042760400065163,
-              0.20574733399917022
+              1.326924233999307
             ],
-            "process_elapsed_sec": 3.95853733200056,
-            "process_max_rss_mb": 309.01171875,
-            "interop": {}
-          },
-          "rust_umap_py": {
-            "fit_mean_sec": 1.0405876745007845,
-            "fit_std_sec": 0.038972641499640304,
-            "fit_times_sec": [
-              1.0795603160004248,
-              1.0016150330011442
-            ],
-            "process_elapsed_sec": 3.041910903999451,
-            "process_max_rss_mb": 32.79296875,
+            "process_elapsed_sec": 3.376851892000559,
+            "process_max_rss_mb": 309.4140625,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
-              "embedding_buffer_reused": true
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform(x)",
+              "post_timing_dtype_copy": false
+            }
+          },
+          "rust_umap_py": {
+            "fit_mean_sec": 0.12007006000021647,
+            "fit_std_sec": 0.0,
+            "fit_times_sec": [
+              0.12007006000021647
+            ],
+            "process_elapsed_sec": 0.1720183449997421,
+            "process_max_rss_mb": 30.71484375,
+            "interop": {
+              "input_dtype": "float32",
+              "input_c_contiguous": true,
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform*(x, ...)",
+              "post_timing_dtype_copy": false,
+              "embedding_buffer_reused": true,
+              "precomputed_validation_each_run": false
             }
           }
         },
@@ -169,16 +197,16 @@
           "sample_size_for_consistency": 569,
           "trustworthiness_at_15": {
             "python_umap_learn": 0.916196827971872,
-            "rust_umap_py": 0.9205001598674709
+            "rust_umap_py": 0.9225177088094487
           },
           "original_knn_recall_at_15": {
             "python_umap_learn": 0.3950790861159939,
-            "rust_umap_py": 0.4114821323960172
+            "rust_umap_py": 0.4123022847100187
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.2185033840016179,
-              "knn_overlap_at_15": 0.48517867603983544
+              "procrustes_disparity": 0.206557335610246,
+              "knn_overlap_at_15": 0.49595782073813705
             }
           }
         }
@@ -186,50 +214,74 @@
       "digits": {
         "fit_timing_and_process_memory": {
           "python_umap_learn": {
-            "fit_mean_sec": 0.8320223995006018,
-            "fit_std_sec": 0.009495363500718668,
+            "fit_mean_sec": 1.943115640000542,
+            "fit_std_sec": 0.0,
             "fit_times_sec": [
-              0.8225270359998831,
-              0.8415177630013204
+              1.943115640000542
             ],
-            "process_elapsed_sec": 5.594689187999393,
-            "process_max_rss_mb": 312.0703125,
-            "interop": {}
-          },
-          "rust_umap_py": {
-            "fit_mean_sec": 2.6153673149992755,
-            "fit_std_sec": 0.02237835100004304,
-            "fit_times_sec": [
-              2.6377456659993186,
-              2.5929889639992325
-            ],
-            "process_elapsed_sec": 7.963463695001337,
-            "process_max_rss_mb": 35.41796875,
+            "process_elapsed_sec": 3.9861117569998896,
+            "process_max_rss_mb": 312.125,
             "interop": {
               "input_dtype": "float32",
               "input_c_contiguous": true,
-              "embedding_buffer_reused": true
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform(x)",
+              "post_timing_dtype_copy": false
+            }
+          },
+          "rust_umap_py": {
+            "fit_mean_sec": 0.34202793599979486,
+            "fit_std_sec": 0.0,
+            "fit_times_sec": [
+              0.34202793599979486
+            ],
+            "process_elapsed_sec": 0.41164697099884506,
+            "process_max_rss_mb": 34.0859375,
+            "interop": {
+              "input_dtype": "float32",
+              "input_c_contiguous": true,
+              "output_dtype": "float32",
+              "output_c_contiguous": true,
+              "timing_boundary": "model.fit_transform*(x, ...)",
+              "post_timing_dtype_copy": false,
+              "embedding_buffer_reused": true,
+              "precomputed_validation_each_run": false
             }
           }
         },
         "consistency": {
-          "sample_size_for_consistency": 1500,
+          "sample_size_for_consistency": 1000,
           "trustworthiness_at_15": {
-            "python_umap_learn": 0.9622859249228918,
-            "rust_umap_py": 0.9679113819303393
+            "python_umap_learn": 0.9572340498123507,
+            "rust_umap_py": 0.965703582395087
           },
           "original_knn_recall_at_15": {
-            "python_umap_learn": 0.4402222222222216,
-            "rust_umap_py": 0.44831111111111044
+            "python_umap_learn": 0.4621999999999992,
+            "rust_umap_py": 0.4748666666666655
           },
           "pairwise": {
             "python_umap_learn__vs__rust_umap_py": {
-              "procrustes_disparity": 0.8929449066140172,
-              "knn_overlap_at_15": 0.5801777777777778
+              "procrustes_disparity": 0.8789601279228709,
+              "knn_overlap_at_15": 0.6149333333333343
             }
           }
         }
       }
+    }
+  },
+  "group_definitions": {
+    "e2e_mixed_knn_strategy": {
+      "fairness": "not_strict_by_design",
+      "python_umap_learn_knn": "exact (force_approximation_algorithm=False)",
+      "rust_umap_py_knn": "adaptive (use_approximate_knn=True, approx_knn_threshold=4096)",
+      "note": "This group is for ecosystem-default behavior, not strict ANN/exact parity. Dataset-level runtime strategy is reported per implementation."
+    },
+    "algo_exact_shared_knn_exact": {
+      "fairness": "strict_exact_equivalent",
+      "python_umap_learn_knn": "shared precomputed exact kNN",
+      "rust_umap_py_knn": "shared precomputed exact kNN",
+      "note": "Primary fairness group for algorithm-level speed/memory/consistency conclusions."
     }
   },
   "interop_audit": [
@@ -237,7 +289,8 @@
     "kNN indices use int64 and kNN distances use float32 in the binding path.",
     "Thread counts are pinned to 1 for BLAS/OpenMP/Numba to avoid cross-runtime thread bias.",
     "Random seed is aligned across implementations with seed=42 by default.",
-    "rust_umap_py algorithm benchmark uses reusable output buffer to reduce allocation overhead and peak RSS.",
+    "Algorithm timing scope in both bindings is aligned to the fit_transform* call only.",
+    "No post-fit dtype conversion/copy is included in algorithm timers on either side.",
     "Current rust_umap core stores row-major Vec<Vec<f32>>, so one boundary copy is still required."
   ]
 }

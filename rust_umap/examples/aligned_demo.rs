@@ -55,11 +55,7 @@ fn mean_identity_gap(embeddings: &[Vec<Vec<f32>>]) -> f32 {
         }
     }
 
-    if count == 0 {
-        0.0
-    } else {
-        sum / count as f32
-    }
+    if count == 0 { 0.0 } else { sum / count as f32 }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -104,8 +100,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         mean_identity_gap(&embeddings)
     );
 
-    for slice_idx in 0..embeddings.len() {
-        let row = &embeddings[slice_idx][0];
+    for (slice_idx, slice) in embeddings.iter().enumerate() {
+        let row = &slice[0];
         println!(
             "slice[{slice_idx}] first point: [{:.6}, {:.6}]",
             row[0], row[1]

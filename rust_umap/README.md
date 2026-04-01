@@ -22,7 +22,8 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
   - `transform`
 - Sparse CSR input MVP:
   - `SparseCsrMatrix` + `fit_sparse_csr` / `fit_transform_sparse_csr`
-  - Exact Euclidean sparse kNN (no full dense distance matrix materialization)
+  - Exact sparse kNN for `euclidean` / `manhattan` / `cosine` (no full dense distance matrix materialization)
+  - Sparse-trained `transform` supports dense query input for `euclidean` / `manhattan` / `cosine`
   - `fit_csv` / `bench_fit_csv` support `--csr-indptr/--csr-indices/--csr-data/--csr-n-cols`
   - Sparse `inverse_transform` is intentionally unsupported in this MVP
 - Approximate inverse mapping API:
@@ -37,8 +38,23 @@ A ground-up Rust implementation of the core UMAP pipeline for reproducible algor
 ## What is intentionally out of scope (for this version)
 
 - Full `pynndescent`-equivalent ANN quality/performance parity
-- Sparse path parity for non-Euclidean metrics
 - Sparse-trained inverse transform
+
+## Current scope boundary
+
+The crate README and repository README use the same scope contract for the current documented surface:
+
+- Supported core workflow: single-dataset non-parametric `UmapModel` / `Umap` fit, `fit_transform`, `transform`, and dense-trained `inverse_transform`
+- Supported input modes: dense input, precomputed-kNN fit with metric match, and sparse CSR fit / `fit_transform_sparse_csr`
+- Supported sparse follow-up path: dense-query `transform` after sparse training for `euclidean`, `manhattan`, and `cosine`
+
+The following remain intentionally outside the current boundary:
+
+- `inverse_transform` after sparse training
+- Python binding parity for crate-only experimental or auxiliary surfaces such as parametric UMAP, aligned UMAP, CLI binaries, or benchmark helpers
+- Full ANN parity with Python `umap-learn` + `pynndescent`
+
+See `../docs/adr/ADR-L8-scope-alignment.md` for the L8 alignment record.
 
 ## Quick start
 
@@ -54,11 +70,26 @@ cargo run --release
 
 Repository automation keeps benchmark validation staged by workflow/job:
 
-1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `no-regression-smoke` (euclidean/manhattan/cosine matrix).
+1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `ann-e2e-smoke` -> `wave1-smoke` -> `no-regression-smoke` (euclidean/manhattan/cosine matrix).
 2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` for binding tests and ecosystem smoke/gate outputs.
 3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled `optimization-report` after consistency and no-regression jobs.
 
 The Rust crate remains the unit under test in all staged checks.
+
+For Wave 3 release-prep convergence, run the repository-level orchestrator from the repo root:
+
+```bash
+PYTHON_BIN="$(command -v python3 || command -v python)"
+$PYTHON_BIN benchmarks/release_prep_regression.py \
+  --candidate-root "$(pwd -P)" \
+  --baseline-root /path/to/umap-rs-baseline \
+  --gate-config benchmarks/gate_thresholds.json \
+  --metrics euclidean,manhattan,cosine \
+  --output-json benchmarks/release-prep-regression.local.json
+```
+
+This wraps `wave1-smoke`, `ann-e2e-smoke`, `consistency-smoke`, and per-metric `no-regression-smoke`
+into one summary artifact and exit code.
 
 For CSV-driven runs:
 

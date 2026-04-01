@@ -1,42 +1,75 @@
 #!/usr/bin/env python3
+from __future__ import annotations
+
 import argparse
-import json
 import shutil
 import sys
 import tempfile
 from pathlib import Path
 from typing import Dict, List
 
-import numpy as np
-from sklearn.datasets import load_breast_cancer, load_digits
-from sklearn.preprocessing import StandardScaler
-
 ROOT = Path(__file__).resolve().parents[1]
 BENCH_DIR = ROOT / "benchmarks"
 sys.path.insert(0, str(BENCH_DIR))
 
-import compare_real_impls_fair as fair
+from gate_config import THRESHOLDS_PATH, emit_report, gate_report, load_gate_config
 
 
 DATASETS = {
-    "breast_cancer": lambda: StandardScaler().fit_transform(load_breast_cancer().data.astype(np.float32)).astype(np.float32),
-    "digits": lambda: StandardScaler().fit_transform(load_digits().data.astype(np.float32)).astype(np.float32),
+    "breast_cancer": "breast_cancer",
+    "digits": "digits",
 }
+
+fair = None
+
+
+def load_dataset(name: str):
+    import numpy as np
+    from sklearn.datasets import load_breast_cancer, load_digits
+    from sklearn.preprocessing import StandardScaler
+
+    if name == "breast_cancer":
+        return StandardScaler().fit_transform(
+            load_breast_cancer().data.astype(np.float32)
+        ).astype(np.float32)
+    if name == "digits":
+        return StandardScaler().fit_transform(load_digits().data.astype(np.float32)).astype(
+            np.float32
+        )
+    raise KeyError(f"unknown dataset {name!r}")
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CI smoke consistency gate against public UMAP implementations")
+    p.add_argument("--gate-config", default=str(THRESHOLDS_PATH))
     p.add_argument("--python-bin", default=sys.executable)
     p.add_argument("--rscript-bin", default=shutil.which("Rscript") or "")
     p.add_argument("--require-r", action="store_true")
-    p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--warmup", type=int, default=0)
-    p.add_argument("--repeats", type=int, default=1)
-    p.add_argument("--sample-cap", type=int, default=1500)
-    p.add_argument("--trust-gap", type=float, default=0.02)
-    p.add_argument("--recall-gap", type=float, default=0.05)
-    p.add_argument("--pairwise-min-overlap", type=float, default=0.40)
-    return p.parse_args()
+    p.add_argument("--seed", type=int, default=None)
+    p.add_argument("--warmup", type=int, default=None)
+    p.add_argument("--repeats", type=int, default=None)
+    p.add_argument("--sample-cap", type=int, default=None)
+    p.add_argument("--trust-gap", type=float, default=None)
+    p.add_argument("--recall-gap", type=float, default=None)
+    p.add_argument("--pairwise-min-overlap", type=float, default=None)
+    p.add_argument("--output-json", default=None)
+    args = p.parse_args()
+    config = load_gate_config("consistency_smoke", args.gate_config)
+    if args.seed is None:
+        args.seed = int(config["seed"])
+    if args.warmup is None:
+        args.warmup = int(config["warmup"])
+    if args.repeats is None:
+        args.repeats = int(config["repeats"])
+    if args.sample_cap is None:
+        args.sample_cap = int(config["sample_cap"])
+    if args.trust_gap is None:
+        args.trust_gap = float(config["trust_gap"])
+    if args.recall_gap is None:
+        args.recall_gap = float(config["recall_gap"])
+    if args.pairwise_min_overlap is None:
+        args.pairwise_min_overlap = float(config["pairwise_min_overlap"])
+    return args
 
 
 def build_release_bins() -> None:
@@ -86,13 +119,30 @@ def summarize_dataset(name: str, consistency: Dict[str, object], impls: List[str
 
 def main() -> None:
     args = parse_args()
+    config = load_gate_config("consistency_smoke", args.gate_config)
+    global fair
+    import numpy as np
+    import compare_real_impls_fair as fair_module
+
+    fair = fair_module
     fair.PYTHON_BIN = Path(args.python_bin)
     fair.RSCRIPT_BIN = Path(args.rscript_bin) if args.rscript_bin else Path("Rscript")
     build_release_bins()
     impls = available_impls(args)
 
     all_failures: List[str] = []
-    summary: Dict[str, object] = {"impls": impls, "datasets": {}}
+    summary: Dict[str, object] = {
+        "impls": impls,
+        "datasets": {},
+        "config": {
+            "seed": args.seed,
+            "warmup": args.warmup,
+            "repeats": args.repeats,
+            "sample_cap": args.sample_cap,
+            "thread_env": fair.THREAD_ENV,
+            "requires_r": bool(args.require_r),
+        },
+    }
 
     with tempfile.TemporaryDirectory(prefix="umap-rs-ci-consistency-") as tmpdir:
         tmp = Path(tmpdir)
@@ -102,13 +152,19 @@ def main() -> None:
         fair.TIME_DIR = tmp / "time"
         fair.ensure_dirs()
 
-        for name, loader in DATASETS.items():
-            x = loader()
+        for name in DATASETS:
+            x = load_dataset(name)
             data_path = fair.DATA_DIR / f"{name}.csv"
             idx_path = fair.KNN_DIR / f"{name}_idx.csv"
             dist_path = fair.KNN_DIR / f"{name}_dist.csv"
             fair.save_dataset_csv(data_path, x)
-            orig_knn_idx = fair.compute_shared_exact_knn(x, fair.N_NEIGHBORS, idx_path, dist_path)
+            orig_knn_idx = fair.compute_shared_exact_knn(
+                x,
+                fair.N_NEIGHBORS,
+                "euclidean",
+                idx_path,
+                dist_path,
+            )
 
             embeddings = {}
             run_meta = {}
@@ -119,6 +175,7 @@ def main() -> None:
                     impl,
                     data_path,
                     out_path,
+                    "euclidean",
                     args.seed,
                     args.warmup,
                     args.repeats,
@@ -160,7 +217,21 @@ def main() -> None:
                 )
             )
 
-    print(json.dumps(summary, indent=2))
+    thresholds = {
+        "sample_cap": args.sample_cap,
+        "trust_gap": args.trust_gap,
+        "recall_gap": args.recall_gap,
+        "pairwise_min_overlap": args.pairwise_min_overlap,
+    }
+    report = gate_report(
+        gate="consistency_smoke",
+        strict=bool(config["strict"]),
+        overall_pass=not all_failures,
+        thresholds=thresholds,
+        failures=all_failures,
+        details=summary,
+    )
+    emit_report(report, args.output_json)
     if all_failures:
         for failure in all_failures:
             print(f"FAIL: {failure}", file=sys.stderr)

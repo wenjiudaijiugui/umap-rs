@@ -5,16 +5,11 @@ use rand::{Rng, SeedableRng};
 
 const SCALE_EPS: f32 = 1e-6;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ParametricTrainMode {
     Naive,
+    #[default]
     Optimized,
-}
-
-impl Default for ParametricTrainMode {
-    fn default() -> Self {
-        Self::Optimized
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +21,8 @@ pub struct ParametricUmapParams {
     pub inference_batch_size: usize,
     pub learning_rate: f32,
     pub weight_decay: f32,
+    pub pairwise_loss_weight: f32,
+    pub pairwise_pairs_per_batch: usize,
     pub standardize_input: bool,
     pub seed: u64,
     pub train_mode: ParametricTrainMode,
@@ -33,18 +30,21 @@ pub struct ParametricUmapParams {
 
 impl Default for ParametricUmapParams {
     fn default() -> Self {
-        let mut umap_params = UmapParams::default();
-        umap_params.n_epochs = Some(200);
-        umap_params.use_approximate_knn = false;
-
         Self {
-            umap_params,
+            umap_params: UmapParams {
+                n_epochs: Some(200),
+                use_approximate_knn: false,
+                ..UmapParams::default()
+            },
             hidden_dim: 64,
             train_epochs: 120,
             batch_size: 128,
             inference_batch_size: 1024,
             learning_rate: 0.01,
             weight_decay: 1e-4,
+            // Keep pairwise distillation opt-in so legacy behavior remains unchanged by default.
+            pairwise_loss_weight: 0.0,
+            pairwise_pairs_per_batch: 32,
             standardize_input: true,
             seed: 42,
             train_mode: ParametricTrainMode::Optimized,
@@ -170,6 +170,7 @@ impl ParametricUmapModel {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn train_naive_full_batch(
         &mut self,
         inputs: &[f32],
@@ -191,6 +192,7 @@ impl ParametricUmapModel {
         let mut grad_w2 = vec![0.0_f32; self.w2.len()];
         let mut grad_b2 = vec![0.0_f32; self.b2.len()];
 
+        let mut delta_out_all = vec![0.0_f32; n_samples * output_dim];
         let mut delta_hidden = vec![0.0_f32; hidden];
 
         for epoch in 0..self.params.train_epochs {
@@ -202,6 +204,7 @@ impl ParametricUmapModel {
             grad_b1.fill(0.0);
             grad_w2.fill(0.0);
             grad_b2.fill(0.0);
+            delta_out_all.fill(0.0);
 
             for sample_idx in 0..n_samples {
                 let x_row = &inputs[sample_idx * n_features..(sample_idx + 1) * n_features];
@@ -223,18 +226,46 @@ impl ParametricUmapModel {
                         sum += hidden_row[h] * self.w2[h * output_dim + o];
                     }
                     output_row[o] = sum;
+                    let target = targets[sample_idx * output_dim + o];
+                    delta_out_all[sample_idx * output_dim + o] = sum - target;
+                }
+            }
+
+            if self.params.pairwise_loss_weight > 0.0
+                && self.params.pairwise_pairs_per_batch > 0
+                && n_samples > 1
+            {
+                let max_pairs = n_samples * (n_samples - 1) / 2;
+                let pair_count = self.params.pairwise_pairs_per_batch.min(max_pairs).max(1);
+                let pair_scale = self.params.pairwise_loss_weight / pair_count as f32;
+
+                for pair_idx in 0..pair_count {
+                    let i = (pair_idx * 9973 + epoch * 37) % n_samples;
+                    let mut j = (pair_idx * 3251 + epoch * 73 + 1) % n_samples;
+                    if j == i {
+                        j = (j + 1) % n_samples;
+                    }
+
+                    let i_off = i * output_dim;
+                    let j_off = j * output_dim;
+                    for o in 0..output_dim {
+                        let student_diff = output_all[i_off + o] - output_all[j_off + o];
+                        let teacher_diff = targets[i_off + o] - targets[j_off + o];
+                        let pair_err = student_diff - teacher_diff;
+                        delta_out_all[i_off + o] += pair_scale * pair_err;
+                        delta_out_all[j_off + o] -= pair_scale * pair_err;
+                    }
                 }
             }
 
             for sample_idx in 0..n_samples {
                 let x_row = &inputs[sample_idx * n_features..(sample_idx + 1) * n_features];
                 let hidden_row = &hidden_all[sample_idx * hidden..(sample_idx + 1) * hidden];
-                let output_row =
-                    &output_all[sample_idx * output_dim..(sample_idx + 1) * output_dim];
-                let target_row = &targets[sample_idx * output_dim..(sample_idx + 1) * output_dim];
+                let delta_out_row =
+                    &delta_out_all[sample_idx * output_dim..(sample_idx + 1) * output_dim];
 
                 for o in 0..output_dim {
-                    let err = output_row[o] - target_row[o];
+                    let err = delta_out_row[o];
                     grad_b2[o] += err;
                     for h in 0..hidden {
                         grad_w2[h * output_dim + o] += hidden_row[h] * err;
@@ -244,8 +275,7 @@ impl ParametricUmapModel {
                 for h in 0..hidden {
                     let mut sum = 0.0_f32;
                     for o in 0..output_dim {
-                        let err = output_row[o] - target_row[o];
-                        sum += err * self.w2[h * output_dim + o];
+                        sum += delta_out_row[o] * self.w2[h * output_dim + o];
                     }
                     let dh = sum * (1.0 - hidden_row[h] * hidden_row[h]);
                     delta_hidden[h] = dh;
@@ -280,6 +310,7 @@ impl ParametricUmapModel {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn train_optimized_minibatch(
         &mut self,
         inputs: &[f32],
@@ -343,6 +374,36 @@ impl ParametricUmapModel {
                     }
                 }
 
+                if self.params.pairwise_loss_weight > 0.0
+                    && self.params.pairwise_pairs_per_batch > 0
+                    && bsz > 1
+                {
+                    let max_pairs = bsz * (bsz - 1) / 2;
+                    let pair_count = self.params.pairwise_pairs_per_batch.min(max_pairs).max(1);
+                    let pair_scale = self.params.pairwise_loss_weight / pair_count as f32;
+
+                    for _ in 0..pair_count {
+                        let i = rng.gen_range(0..bsz);
+                        let mut j = rng.gen_range(0..(bsz - 1));
+                        if j >= i {
+                            j += 1;
+                        }
+
+                        let i_off = i * output_dim;
+                        let j_off = j * output_dim;
+                        let i_target_off = chunk[i] * output_dim;
+                        let j_target_off = chunk[j] * output_dim;
+                        for o in 0..output_dim {
+                            let student_diff = output_buf[i_off + o] - output_buf[j_off + o];
+                            let teacher_diff =
+                                targets[i_target_off + o] - targets[j_target_off + o];
+                            let pair_err = student_diff - teacher_diff;
+                            delta_out[i_off + o] += pair_scale * pair_err;
+                            delta_out[j_off + o] -= pair_scale * pair_err;
+                        }
+                    }
+                }
+
                 for bi in 0..bsz {
                     let hidden_row = &hidden_buf[bi * hidden..(bi + 1) * hidden];
                     let delta_out_row = &delta_out[bi * output_dim..(bi + 1) * output_dim];
@@ -399,6 +460,7 @@ impl ParametricUmapModel {
         }
     }
 
+    #[allow(clippy::needless_range_loop)]
     fn predict_internal(
         &self,
         inputs: &[f32],
@@ -494,14 +556,19 @@ fn validate_parametric_params(params: &ParametricUmapParams) -> Result<(), UmapE
             "inference_batch_size must be >= 1".to_string(),
         ));
     }
-    if params.learning_rate <= 0.0 {
+    if !params.learning_rate.is_finite() || params.learning_rate <= 0.0 {
         return Err(UmapError::InvalidParameter(
-            "learning_rate must be > 0".to_string(),
+            "learning_rate must be finite and > 0".to_string(),
         ));
     }
-    if params.weight_decay < 0.0 {
+    if !params.pairwise_loss_weight.is_finite() || params.pairwise_loss_weight < 0.0 {
         return Err(UmapError::InvalidParameter(
-            "weight_decay must be >= 0".to_string(),
+            "pairwise_loss_weight must be finite and >= 0".to_string(),
+        ));
+    }
+    if !params.weight_decay.is_finite() || params.weight_decay < 0.0 {
+        return Err(UmapError::InvalidParameter(
+            "weight_decay must be finite and >= 0".to_string(),
         ));
     }
     Ok(())
@@ -667,22 +734,26 @@ mod tests {
     }
 
     fn assert_finite(points: &[Vec<f32>]) {
-        assert!(points
-            .iter()
-            .flat_map(|row| row.iter())
-            .all(|value| value.is_finite()));
+        assert!(
+            points
+                .iter()
+                .flat_map(|row| row.iter())
+                .all(|value| value.is_finite())
+        );
     }
 
     #[test]
     fn parametric_fit_transform_is_deterministic_with_same_seed() {
         let data = synthetic_data(64, 6);
 
-        let mut umap_params = UmapParams::default();
-        umap_params.n_neighbors = 12;
-        umap_params.n_components = 2;
-        umap_params.n_epochs = Some(80);
-        umap_params.init = InitMethod::Random;
-        umap_params.use_approximate_knn = false;
+        let umap_params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(80),
+            init: InitMethod::Random,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
 
         let params = ParametricUmapParams {
             umap_params,
@@ -692,6 +763,8 @@ mod tests {
             inference_batch_size: 64,
             learning_rate: 0.01,
             weight_decay: 1e-4,
+            pairwise_loss_weight: 0.1,
+            pairwise_pairs_per_batch: 16,
             standardize_input: true,
             seed: 777,
             train_mode: ParametricTrainMode::Optimized,
@@ -725,6 +798,8 @@ mod tests {
         params.hidden_dim = 32;
         params.train_epochs = 50;
         params.batch_size = 20;
+        params.pairwise_loss_weight = 0.1;
+        params.pairwise_pairs_per_batch = 16;
         params.seed = 2026;
         params.train_mode = ParametricTrainMode::Optimized;
 
@@ -737,5 +812,76 @@ mod tests {
         assert_eq!(query_emb[0].len(), 2);
         assert!(model.teacher_embedding().is_some());
         assert_finite(&query_emb);
+    }
+
+    #[test]
+    fn parametric_rejects_invalid_pairwise_loss_weight() {
+        let data = synthetic_data(24, 4);
+        let params = ParametricUmapParams {
+            pairwise_loss_weight: f32::NAN,
+            ..ParametricUmapParams::default()
+        };
+
+        let mut model = ParametricUmapModel::new(params);
+        let err = model
+            .fit_transform(&data)
+            .expect_err("non-finite pairwise_loss_weight should fail");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(err.to_string().contains("pairwise_loss_weight"));
+    }
+
+    #[test]
+    fn parametric_rejects_negative_pairwise_loss_weight() {
+        let data = synthetic_data(24, 4);
+        let params = ParametricUmapParams {
+            pairwise_loss_weight: -0.01,
+            ..ParametricUmapParams::default()
+        };
+
+        let mut model = ParametricUmapModel::new(params);
+        let err = model
+            .fit_transform(&data)
+            .expect_err("negative pairwise_loss_weight should fail");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(err.to_string().contains("pairwise_loss_weight"));
+    }
+
+    #[test]
+    fn parametric_rejects_non_finite_learning_rate() {
+        let data = synthetic_data(24, 4);
+        let params = ParametricUmapParams {
+            learning_rate: f32::INFINITY,
+            ..ParametricUmapParams::default()
+        };
+
+        let mut model = ParametricUmapModel::new(params);
+        let err = model
+            .fit_transform(&data)
+            .expect_err("non-finite learning_rate should fail");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(err.to_string().contains("learning_rate"));
+    }
+
+    #[test]
+    fn parametric_rejects_non_finite_weight_decay() {
+        let data = synthetic_data(24, 4);
+        let params = ParametricUmapParams {
+            weight_decay: f32::NAN,
+            ..ParametricUmapParams::default()
+        };
+
+        let mut model = ParametricUmapModel::new(params);
+        let err = model
+            .fit_transform(&data)
+            .expect_err("non-finite weight_decay should fail");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(err.to_string().contains("weight_decay"));
+    }
+
+    #[test]
+    fn parametric_defaults_keep_pairwise_distillation_disabled() {
+        let params = ParametricUmapParams::default();
+        assert_eq!(params.pairwise_loss_weight, 0.0);
+        assert_eq!(params.pairwise_pairs_per_batch, 32);
     }
 }

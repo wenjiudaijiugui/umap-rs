@@ -86,6 +86,14 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--repeats", type=int, default=3)
     p.add_argument("--sample-cap-consistency", type=int, default=2000)
     p.add_argument("--include-california", action="store_true")
+    p.add_argument(
+        "--ensure-ann-coverage",
+        action="store_true",
+        help=(
+            "append a large enough california_housing slice when needed so the mixed e2e group "
+            "covers rust_umap_py approximate ANN at least once"
+        ),
+    )
     p.add_argument("--large-max-samples", type=int, default=15000)
     p.add_argument("--report-json", default=str(REPORT_JSON))
     p.add_argument("--report-md", default=str(REPORT_MD))
@@ -222,7 +230,42 @@ def parse_json_line(text: str) -> Dict[str, object]:
     raise RuntimeError("No JSON payload found in command output")
 
 
-def load_datasets(seed: int, include_california: bool, large_max_samples: int) -> List[DatasetSpec]:
+def load_california_housing_dataset(
+    seed: int,
+    requested_max_samples: int,
+    minimum_required_samples: int = 0,
+) -> DatasetSpec:
+    x_large = fetch_california_housing().data.astype(np.float32)
+    original_n = int(x_large.shape[0])
+
+    target_samples = original_n
+    if requested_max_samples > 0:
+        target_samples = min(original_n, requested_max_samples)
+    if minimum_required_samples > 0:
+        target_samples = min(original_n, max(target_samples, minimum_required_samples))
+
+    if original_n > target_samples:
+        rng = np.random.default_rng(seed)
+        idx = rng.choice(original_n, size=target_samples, replace=False)
+        x_large = x_large[idx]
+
+    used_n = int(x_large.shape[0])
+    x_large = StandardScaler().fit_transform(x_large).astype(np.float32)
+    return DatasetSpec(
+        name="california_housing",
+        x=x_large,
+        original_samples=original_n,
+        used_samples=used_n,
+        n_features=int(x_large.shape[1]),
+    )
+
+
+def load_datasets(
+    seed: int,
+    include_california: bool,
+    large_max_samples: int,
+    ensure_ann_coverage: bool,
+) -> List[DatasetSpec]:
     specs: List[DatasetSpec] = []
 
     x_bc = load_breast_cancer().data.astype(np.float32)
@@ -249,22 +292,16 @@ def load_datasets(seed: int, include_california: bool, large_max_samples: int) -
         )
     )
 
-    if include_california:
-        x_large = fetch_california_housing().data.astype(np.float32)
-        original_n = int(x_large.shape[0])
-        if original_n > large_max_samples:
-            rng = np.random.default_rng(seed)
-            idx = rng.choice(original_n, size=large_max_samples, replace=False)
-            x_large = x_large[idx]
-        used_n = int(x_large.shape[0])
-        x_large = StandardScaler().fit_transform(x_large).astype(np.float32)
+    need_ann_dataset = ensure_ann_coverage and all(
+        spec.used_samples <= E2E_RUST_APPROX_THRESHOLD for spec in specs
+    )
+    if include_california or need_ann_dataset:
+        min_required_samples = E2E_RUST_APPROX_THRESHOLD + 1 if ensure_ann_coverage else 0
         specs.append(
-            DatasetSpec(
-                name="california_housing",
-                x=x_large,
-                original_samples=original_n,
-                used_samples=used_n,
-                n_features=int(x_large.shape[1]),
+            load_california_housing_dataset(
+                seed=seed,
+                requested_max_samples=large_max_samples,
+                minimum_required_samples=min_required_samples,
             )
         )
 
@@ -767,6 +804,7 @@ def main() -> None:
         seed=args.seed,
         include_california=args.include_california,
         large_max_samples=args.large_max_samples,
+        ensure_ann_coverage=args.ensure_ann_coverage,
     )
 
     report: Dict[str, object] = {
@@ -780,6 +818,7 @@ def main() -> None:
             "n_epochs": N_EPOCHS,
             "init": INIT,
             "metric": METRIC,
+            "ensure_ann_coverage": args.ensure_ann_coverage,
             "datasets": [],
             "thread_env": THREAD_ENV,
         },

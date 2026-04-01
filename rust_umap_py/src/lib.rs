@@ -1,9 +1,9 @@
 use numpy::ndarray::{Array2, ArrayView1};
-use numpy::{PyArray2, PyReadonlyArray2, PyReadwriteArray2};
+use numpy::{PyArray2, PyReadonlyArray1, PyReadonlyArray2, PyReadwriteArray2};
 use numpy::PyUntypedArrayMethods;
 use pyo3::exceptions::{PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use rust_umap::{InitMethod, Metric, UmapError, UmapModel, UmapParams};
+use rust_umap::{InitMethod, Metric, SparseCsrMatrix, UmapError, UmapModel, UmapParams};
 
 fn parse_metric(metric: &str) -> PyResult<Metric> {
     match metric.to_ascii_lowercase().as_str() {
@@ -108,6 +108,45 @@ fn array2_i64_to_usize_rows(
     Ok(rows)
 }
 
+fn array1_i64_to_usize_vec(data: &PyReadonlyArray1<'_, i64>, name: &str) -> PyResult<Vec<usize>> {
+    let slice = data
+        .as_slice()
+        .map_err(|_| PyValueError::new_err(format!("{name} must be contiguous")))?;
+    let mut out = Vec::with_capacity(slice.len());
+    for &value in slice {
+        if value < 0 {
+            return Err(PyValueError::new_err(format!(
+                "{name} must contain non-negative integers"
+            )));
+        }
+        out.push(value as usize);
+    }
+    Ok(out)
+}
+
+fn array1_f32_to_vec(data: &PyReadonlyArray1<'_, f32>, name: &str) -> PyResult<Vec<f32>> {
+    let slice = data
+        .as_slice()
+        .map_err(|_| PyValueError::new_err(format!("{name} must be contiguous")))?;
+    Ok(slice.to_vec())
+}
+
+fn sparse_csr_from_py(
+    indptr: &PyReadonlyArray1<'_, i64>,
+    indices: &PyReadonlyArray1<'_, i64>,
+    data: &PyReadonlyArray1<'_, f32>,
+    n_cols: usize,
+) -> PyResult<SparseCsrMatrix> {
+    let indptr = array1_i64_to_usize_vec(indptr, "indptr")?;
+    let indices = array1_i64_to_usize_vec(indices, "indices")?;
+    let values = array1_f32_to_vec(data, "data")?;
+    if indptr.is_empty() {
+        return Err(PyValueError::new_err("indptr cannot be empty"));
+    }
+    let n_rows = indptr.len() - 1;
+    SparseCsrMatrix::new(n_rows, n_cols, indptr, indices, values).map_err(map_umap_error)
+}
+
 fn rows_to_numpy<'py>(
     py: Python<'py>,
     rows: Vec<Vec<f32>>,
@@ -154,6 +193,20 @@ fn copy_rows_into_out(
             out_view.nrows(),
             out_view.ncols()
         )));
+    }
+
+    if let Some(out_slice) = out_view.as_slice_memory_order_mut() {
+        for (i, row) in rows.iter().enumerate() {
+            if row.len() != n_cols {
+                return Err(PyRuntimeError::new_err(
+                    "inconsistent output row width from rust_umap core",
+                ));
+            }
+            let start = i * n_cols;
+            let end = start + n_cols;
+            out_slice[start..end].copy_from_slice(row);
+        }
+        return Ok(());
     }
 
     for (i, row) in rows.iter().enumerate() {
@@ -247,6 +300,19 @@ impl PyUmapCore {
         py.allow_threads(|| self.inner.fit(&rows)).map_err(map_umap_error)
     }
 
+    fn fit_sparse_csr(
+        &mut self,
+        py: Python<'_>,
+        indptr: PyReadonlyArray1<'_, i64>,
+        indices: PyReadonlyArray1<'_, i64>,
+        data: PyReadonlyArray1<'_, f32>,
+        n_cols: usize,
+    ) -> PyResult<()> {
+        let csr = sparse_csr_from_py(&indptr, &indices, &data, n_cols)?;
+        py.allow_threads(|| self.inner.fit_sparse_csr(csr))
+            .map_err(map_umap_error)
+    }
+
     fn fit_transform<'py>(
         &mut self,
         py: Python<'py>,
@@ -268,6 +334,37 @@ impl PyUmapCore {
         let rows = array2_f32_to_rows(&data, "data")?;
         let embedding = py
             .allow_threads(|| self.inner.fit_transform(&rows))
+            .map_err(map_umap_error)?;
+        copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+    }
+
+    fn fit_transform_sparse_csr<'py>(
+        &mut self,
+        py: Python<'py>,
+        indptr: PyReadonlyArray1<'py, i64>,
+        indices: PyReadonlyArray1<'py, i64>,
+        data: PyReadonlyArray1<'py, f32>,
+        n_cols: usize,
+    ) -> PyResult<Bound<'py, PyArray2<f32>>> {
+        let csr = sparse_csr_from_py(&indptr, &indices, &data, n_cols)?;
+        let embedding = py
+            .allow_threads(|| self.inner.fit_transform_sparse_csr(csr))
+            .map_err(map_umap_error)?;
+        rows_to_numpy(py, embedding, self.inner.params().n_components)
+    }
+
+    fn fit_transform_sparse_csr_into<'py>(
+        &mut self,
+        py: Python<'py>,
+        indptr: PyReadonlyArray1<'py, i64>,
+        indices: PyReadonlyArray1<'py, i64>,
+        data: PyReadonlyArray1<'py, f32>,
+        n_cols: usize,
+        out: PyReadwriteArray2<'py, f32>,
+    ) -> PyResult<()> {
+        let csr = sparse_csr_from_py(&indptr, &indices, &data, n_cols)?;
+        let embedding = py
+            .allow_threads(|| self.inner.fit_transform_sparse_csr(csr))
             .map_err(map_umap_error)?;
         copy_rows_into_out(&embedding, self.inner.params().n_components, out)
     }
@@ -377,6 +474,19 @@ impl PyUmapCore {
         rows_to_numpy(py, out, self.inner.params().n_components)
     }
 
+    fn transform_into<'py>(
+        &self,
+        py: Python<'py>,
+        query: PyReadonlyArray2<'py, f32>,
+        out: PyReadwriteArray2<'py, f32>,
+    ) -> PyResult<()> {
+        let rows = array2_f32_to_rows(&query, "query")?;
+        let transformed = py
+            .allow_threads(|| self.inner.transform(&rows))
+            .map_err(map_umap_error)?;
+        copy_rows_into_out(&transformed, self.inner.params().n_components, out)
+    }
+
     fn inverse_transform<'py>(
         &self,
         py: Python<'py>,
@@ -389,9 +499,27 @@ impl PyUmapCore {
         rows_to_numpy(py, out, 0)
     }
 
+    fn inverse_transform_into<'py>(
+        &self,
+        py: Python<'py>,
+        embedded_query: PyReadonlyArray2<'py, f32>,
+        out: PyReadwriteArray2<'py, f32>,
+    ) -> PyResult<()> {
+        let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
+        let reconstructed = py
+            .allow_threads(|| self.inner.inverse_transform(&rows))
+            .map_err(map_umap_error)?;
+        copy_rows_into_out(&reconstructed, 0, out)
+    }
+
     #[getter]
     fn n_components(&self) -> usize {
         self.inner.params().n_components
+    }
+
+    #[getter]
+    fn n_neighbors(&self) -> usize {
+        self.inner.params().n_neighbors
     }
 }
 

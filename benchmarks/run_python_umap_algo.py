@@ -16,6 +16,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--n-epochs", type=int, default=200)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--init", choices=["random", "spectral"], default="random")
+    p.add_argument("--metric", choices=["euclidean", "manhattan", "cosine"], default="euclidean")
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--repeats", type=int, default=5)
     p.add_argument("--knn-indices", default="", help="optional precomputed kNN indices CSV")
@@ -45,7 +46,7 @@ def create_model(args: argparse.Namespace, precomputed_knn):
     return umap.UMAP(
         n_neighbors=args.n_neighbors,
         n_components=args.n_components,
-        metric="euclidean",
+        metric=args.metric,
         n_epochs=args.n_epochs,
         learning_rate=1.0,
         init=args.init,
@@ -93,7 +94,7 @@ def main() -> None:
     fit_arr = np.asarray(fit_times, dtype=np.float64)
     result = {
         "mode": "fit",
-        "metric": "euclidean",
+        "metric": args.metric,
         "precomputed_knn": precomputed_knn is not None,
         "n_neighbors": args.n_neighbors,
         "n_components": args.n_components,

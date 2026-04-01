@@ -22,8 +22,13 @@ benchmarks/data_real_ecosystem/
 benchmarks/outputs_real_ecosystem/
 benchmarks/time_real_ecosystem/
 benchmarks/knn_real_ecosystem/
+benchmarks/release-prep-regression*.json
+benchmarks/release-prep-regression*.artifacts/
 
 # OS/editor
 .DS_Store
 .vscode/
 .idea/
+
+# Local consolidation backups
+_archive/

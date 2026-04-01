@@ -14,7 +14,7 @@ on:
       repeats:
         description: measured repeats per implementation
         required: false
-        default: '3'
+        default: '5'
       large_max_samples:
         description: max samples for california_housing
         required: false
@@ -53,7 +53,9 @@ jobs:
           python benchmarks/ci_consistency_smoke.py \
             --python-bin python \
             --rscript-bin Rscript \
-            --require-r | tee consistency-smoke.json
+            --require-r \
+            --gate-config benchmarks/gate_thresholds.json \
+            --output-json consistency-smoke.json
       - name: Upload consistency smoke artifact
         uses: actions/upload-artifact@v4
         with:
@@ -105,7 +107,9 @@ jobs:
           python benchmarks/ci_no_regression.py \
             --candidate-root "$GITHUB_WORKSPACE" \
             --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
-            --metric "${{ matrix.metric }}" | tee "no-regression-smoke-${{ matrix.metric }}.json"
+            --metric "${{ matrix.metric }}" \
+            --gate-config benchmarks/gate_thresholds.json \
+            --output-json "no-regression-smoke-${{ matrix.metric }}.json"
       - name: Upload no-regression artifact
         uses: actions/upload-artifact@v4
         with:
@@ -135,7 +139,7 @@ jobs:
       - name: Run fair benchmark report
         env:
           WARMUP: ${{ github.event.inputs.warmup || '1' }}
-          REPEATS: ${{ github.event.inputs.repeats || '3' }}
+          REPEATS: ${{ github.event.inputs.repeats || '5' }}
           LARGE_MAX_SAMPLES: ${{ github.event.inputs.large_max_samples || '5000' }}
           SAMPLE_CAP_CONSISTENCY: ${{ github.event.inputs.sample_cap_consistency || '2000' }}
         run: |
@@ -145,15 +149,17 @@ jobs:
             --warmup "$WARMUP" \
             --repeats "$REPEATS" \
             --large-max-samples "$LARGE_MAX_SAMPLES" \
-            --sample-cap-consistency "$SAMPLE_CAP_CONSISTENCY"
+            --sample-cap-consistency "$SAMPLE_CAP_CONSISTENCY" \
+            --report-json benchmarks/report_real_fair.deep.json \
+            --report-md benchmarks/report_real_fair.deep.md
       - name: Append report excerpt to job summary
         run: |
           echo '## Optimization-stage benchmark report excerpt' >> "$GITHUB_STEP_SUMMARY"
-          sed -n '1,120p' benchmarks/report_real_fair.md >> "$GITHUB_STEP_SUMMARY"
+          sed -n '1,160p' benchmarks/report_real_fair.deep.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark artifacts
         uses: actions/upload-artifact@v4
         with:
           name: deep-benchmark-report
           path: |
-            benchmarks/report_real_fair.md
-            benchmarks/report_real_fair.json
+            benchmarks/report_real_fair.deep.md
+            benchmarks/report_real_fair.deep.json

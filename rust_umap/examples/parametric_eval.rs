@@ -153,6 +153,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         inference_batch_size: batch_size.max(256),
         learning_rate: 0.01,
         weight_decay: 1e-4,
+        pairwise_loss_weight: 0.1,
+        pairwise_pairs_per_batch: 32,
         standardize_input: false,
         seed,
         train_mode: mode,

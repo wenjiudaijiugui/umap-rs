@@ -1,0 +1,283 @@
+{
+  "schema_version": "2.0",
+  "workflow_mode": "lite",
+  "run_id": "wave4-l1-2026-04-01T05:59:29Z",
+  "report_phase": "branch",
+  "branch": "wave4/l1-deep-benchmark-quality-gate",
+  "commit": "a5c1e0b1256db09375cc893775eb0082a30115d4",
+  "baseline_commit": "a5c1e0b1256db09375cc893775eb0082a30115d4",
+  "reference_manifest": [
+    {
+      "name": "python-umap-reference",
+      "repo_url": "https://github.com/lmcinnes/umap",
+      "resolved_ref": "0.5.9.post2",
+      "resolution_type": "version",
+      "build_options": {
+        "python": "3.12",
+        "numpy": "1.26.x"
+      }
+    }
+  ],
+  "dataset_provenance": [
+    {
+      "dataset_id": "synthetic_contract_smoke",
+      "source_uri": "generated://wave1-smoke-targeted-tests",
+      "version": "2026-03-31",
+      "checksum": "generated-in-run",
+      "checksum_type": "other",
+      "split_policy": "fixed deterministic targeted unit tests",
+      "acquired_at_utc": "2026-03-31T14:49:09Z"
+    },
+    {
+      "dataset_id": "real_mnist_like",
+      "source_uri": "https://github.com/lmcinnes/umap",
+      "version": "0.5.9.post2",
+      "checksum": "upstream-managed",
+      "checksum_type": "other",
+      "split_policy": "same seed policy as rust tests and smoke gate",
+      "acquired_at_utc": "2026-03-31T14:49:09Z"
+    },
+    {
+      "dataset_id": "stress_sparse_highdim",
+      "source_uri": "generated://sparse-high-dim-stress",
+      "version": "2026-03-31",
+      "checksum": "generated-in-run",
+      "checksum_type": "other",
+      "split_policy": "fixed synthetic sparse generator seeded by trial seed",
+      "acquired_at_utc": "2026-03-31T14:49:09Z"
+    }
+  ],
+  "dataset_manifest": {
+    "synthetic": [
+      {
+        "dataset_id": "synthetic_smoke_contract",
+        "name": "synthetic_quality_gate_contract",
+        "n_samples": 800,
+        "n_features": 16,
+        "notes": "quality-gate schema and report formatting sanity checks"
+      }
+    ],
+    "real": [
+      {
+        "dataset_id": "real_digits_reference",
+        "name": "digits",
+        "n_samples": 1797,
+        "n_features": 64,
+        "notes": "real-world benchmark anchor in compare_real_impls_fair.py"
+      }
+    ],
+    "stress": [
+      {
+        "dataset_id": "stress_california_housing",
+        "name": "california_housing",
+        "n_samples": 5000,
+        "n_features": 8,
+        "notes": "large-sample stress path used by deep benchmark mode"
+      }
+    ],
+    "coverage_exceptions": []
+  },
+  "reference_status": {
+    "strict_reference_available": true,
+    "mode": "strict",
+    "comparability": "comparable",
+    "reason": ""
+  },
+  "reproducibility": {
+    "env_fingerprint": {
+      "os": "linux",
+      "runtime": "python-3.12 + rust-stable",
+      "compiler": "rustc-stable",
+      "thread_policy": {
+        "OMP_NUM_THREADS": "1",
+        "OPENBLAS_NUM_THREADS": "1",
+        "MKL_NUM_THREADS": "1",
+        "RAYON_NUM_THREADS": "1"
+      },
+      "dependencies": {
+        "umap-learn": "0.5.9.post2",
+        "numpy": "1.26.x",
+        "scikit-learn": "1.5.x"
+      }
+    },
+    "seed_manifest": {
+      "global_seed": 42,
+      "trial_seeds": [
+        42,
+        43,
+        44,
+        45,
+        46
+      ]
+    },
+    "exact_commands": [
+      "mamba run -n umap_bench python benchmarks/compare_real_impls_fair.py --python-bin python --rscript-bin Rscript --warmup 1 --repeats 5 --large-max-samples 5000 --sample-cap-consistency 2000 --report-json benchmarks/report_real_fair.deep.json --report-md benchmarks/report_real_fair.deep.md",
+      "python3 -m json.tool reports/algo-repro-wave/branch-p11-deep-benchmark-quality-gate.json > /dev/null"
+    ],
+    "raw_artifact_refs": [
+      "benchmarks/report_real_fair.deep.json",
+      "benchmarks/report_real_fair.deep.md",
+      "benchmarks/compare_real_impls_fair.py",
+      ".github/workflows/deep-benchmark-report.yml",
+      "reports/TEMP_parallel_issues_2026-04-01.md"
+    ]
+  },
+  "algorithm_profile": {
+    "complexity_class": "simple",
+    "rewrite_strategy": "serial_simple",
+    "parallelizable_modules": 1,
+    "selection_rationale": "L1 only adjusts deep benchmark output contract and gate verdict rendering in a single script/workflow path.",
+    "module_contract_refs": [
+      "reports/TEMP_parallel_issues_2026-04-01.md",
+      "benchmarks/compare_real_impls_fair.py",
+      ".github/workflows/deep-benchmark-report.yml"
+    ],
+    "notes": "Single-track branch for deep benchmark statistical gate strengthening."
+  },
+  "math_first_readiness": {
+    "source_citations_ready": true,
+    "formula_code_mapping_ready": true,
+    "numeric_stability_ready": true,
+    "complexity_baseline_ready": true,
+    "notes": "Quality gate thresholds and consistency metrics map to trustworthiness/knn recall definitions in benchmark harness.",
+    "evidence_refs": [
+      "UMAP_MATHEMATICAL_DOCUMENTATION.md",
+      "benchmarks/compare_real_impls_fair.py",
+      "benchmarks/gate_thresholds.json"
+    ]
+  },
+  "branch_ownership": {
+    "owner_agent_id": "agent-wave4-l1-deep-gate",
+    "exclusive": true,
+    "shared_writer_agent_ids": [],
+    "target_mainline_branch": "main",
+    "lock_evidence_refs": [
+      "reports/TEMP_parallel_issues_2026-04-01.md"
+    ],
+    "notes": "Exclusive single-writer branch ownership for L1 execution."
+  },
+  "rewrite_readiness": {
+    "oracle_spec_ready": true,
+    "acceptance_contract_ready": true,
+    "differential_harness_ready": true,
+    "preprocessing_parity_locked": true,
+    "timing_boundary_locked": true,
+    "seed_policy_locked": true,
+    "notes": "Deep benchmark contract frozen before implementation: run policy, consistency thresholds, and output artifact naming.",
+    "evidence_refs": [
+      "reports/TEMP_parallel_issues_2026-04-01.md",
+      "benchmarks/compare_real_impls_fair.py",
+      ".github/workflows/deep-benchmark-report.yml"
+    ]
+  },
+  "gates": {
+    "reliability": {
+      "pass": true,
+      "items": {
+        "reference_integrity": {
+          "pass": true,
+          "details": "Deep report executed with strict reference comparability against python_umap_learn and r_uwot under fixed thread/seed policy."
+        },
+        "functional_tests": {
+          "pass": true,
+          "details": "compare_real_impls_fair.py deep mode completed and wrote report_real_fair.deep.{json,md}."
+        },
+        "consistency": {
+          "pass": true,
+          "details": "quality_gate.overall_pass=True with zero violations across e2e/algo groups."
+        },
+        "fairness": {
+          "pass": true,
+          "details": "Timing boundary, preprocessing parity, seed derivation, and single-thread policy remained locked during deep run."
+        }
+      }
+    },
+    "performance": {
+      "soft": true,
+      "pass": true,
+      "explanation_required": false,
+      "metrics": [
+        {
+          "metric_id": "p11_public_consistency_delta",
+          "pass": true,
+          "metric_name": "deep_report_public_consistency_delta",
+          "category": "public_consistency",
+          "unit": "delta",
+          "value": 0.02570951585976683,
+          "target_max": 0.03,
+          "baseline_ref": "python-umap-reference-0.5.9.post2",
+          "trial_count": 5,
+          "per_trial": [
+            0.02570951585976683,
+            0.02570951585976683,
+            0.02570951585976683,
+            0.02570951585976683,
+            0.02570951585976683
+          ],
+          "aggregate_method": "max",
+          "measurement_scope": "maximum trust/recall gap across deep e2e and algo_exact checks",
+          "timing_boundary": "algorithm runtime only; setup excluded symmetrically",
+          "raw_artifact_refs": [
+            "benchmarks/report_real_fair.deep.json",
+            "benchmarks/report_real_fair.deep.md"
+          ]
+        },
+        {
+          "metric_id": "p11_deep_output_contract_coverage",
+          "pass": true,
+          "metric_name": "deep_output_contract_coverage_ratio",
+          "category": "quality",
+          "unit": "ratio",
+          "value": 1.0,
+          "target_min": 1.0,
+          "baseline_ref": "l1-doD-contract",
+          "trial_count": 5,
+          "per_trial": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+          ],
+          "aggregate_method": "mean",
+          "measurement_scope": "L1 deliverables present: deep outputs + quality gate verdict + workflow routing",
+          "timing_boundary": "validation command execution only",
+          "raw_artifact_refs": [
+            "benchmarks/report_real_fair.deep.json",
+            "benchmarks/report_real_fair.deep.md",
+            ".github/workflows/deep-benchmark-report.yml",
+            "benchmarks/compare_real_impls_fair.py"
+          ]
+        }
+      ]
+    },
+    "overall": {
+      "merge_ready": true,
+      "blocked_by_reliability": false,
+      "policy_violations": []
+    }
+  },
+  "reviews": [
+    {
+      "review_stage": "other",
+      "reviewer_id": "reviewer-wave4-l1-deep-gate",
+      "implementation_owner": "agent-wave4-l1-deep-gate",
+      "independence_verified": true,
+      "decision": "go",
+      "review_summary": "Deep benchmark runtime evidence is present and quality gate is passing; branch is merge-eligible.",
+      "reviewed_commit": "a5c1e0b1256db09375cc893775eb0082a30115d4",
+      "fairness_checklist_result": {
+        "pass": true,
+        "checklist_ref": "reports/TEMP_parallel_plan_2026-03-31.md#evidence-governance-revision-2026-04-01",
+        "notes": "min_overlap@15=0.480844, max_trust_gap=0.018881, max_recall_gap=0.025710"
+      },
+      "findings": [],
+      "style_policy_check": {
+        "defensive_programming_minimized": true,
+        "redundancy_minimized": true,
+        "implementation_lean": true,
+        "hardcoding_policy_respected": true
+      }
+    }
+  ]
+}

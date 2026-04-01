@@ -20,29 +20,21 @@ const DEFAULT_BANDWIDTH: f32 = 1.0;
 const INIT_MAX_COORD: f32 = 10.0;
 const INIT_NOISE: f32 = 1e-4;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+type KnnRows = (Vec<Vec<usize>>, Vec<Vec<f32>>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum InitMethod {
     Random,
+    #[default]
     Spectral,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Metric {
+    #[default]
     Euclidean,
     Manhattan,
     Cosine,
-}
-
-impl Default for InitMethod {
-    fn default() -> Self {
-        Self::Spectral
-    }
-}
-
-impl Default for Metric {
-    fn default() -> Self {
-        Self::Euclidean
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -233,14 +225,8 @@ impl UmapModel {
         }
 
         validate_params(&self.params, n_samples, n_features)?;
-        if self.params.metric != Metric::Euclidean {
-            return Err(UmapError::InvalidParameter(
-                "sparse CSR fit currently supports euclidean metric only".to_string(),
-            ));
-        }
-
         let (knn_indices, knn_dists) =
-            sparse::exact_nearest_neighbors_euclidean(&data, self.params.n_neighbors);
+            sparse::exact_nearest_neighbors(&data, self.params.n_neighbors, self.params.metric);
         self.fit_transform_with_knn_sparse_internal(data, &knn_indices, &knn_dists)
     }
 
@@ -281,46 +267,18 @@ impl UmapModel {
         let n_epochs = self
             .params
             .n_epochs
-            .unwrap_or_else(|| if n_samples <= 10_000 { 500 } else { 200 });
+            .unwrap_or(if n_samples <= 10_000 { 500 } else { 200 });
 
         let (a, b) = find_ab_params(self.params.spread, self.params.min_dist);
         self.a = a;
         self.b = b;
 
-        if knn_indices.len() != n_samples || knn_dists.len() != n_samples {
-            return Err(UmapError::InvalidParameter(
-                "precomputed knn row count must match number of samples".to_string(),
-            ));
-        }
-
-        let mut knn_indices_trimmed = Vec::with_capacity(n_samples);
-        let mut knn_dists_trimmed = Vec::with_capacity(n_samples);
-        for row in 0..n_samples {
-            let idx_row = &knn_indices[row];
-            let dist_row = &knn_dists[row];
-            if idx_row.len() < self.params.n_neighbors || dist_row.len() < self.params.n_neighbors {
-                return Err(UmapError::InvalidParameter(
-                    "precomputed knn columns must be >= n_neighbors".to_string(),
-                ));
-            }
-            if idx_row.len() != dist_row.len() {
-                return Err(UmapError::InvalidParameter(
-                    "precomputed knn index/dist row lengths must match".to_string(),
-                ));
-            }
-
-            let idx_trim = idx_row[..self.params.n_neighbors].to_vec();
-            for &idx in idx_trim.iter() {
-                if idx >= n_samples {
-                    return Err(UmapError::InvalidParameter(
-                        "precomputed knn index out of range".to_string(),
-                    ));
-                }
-            }
-            let dist_trim = dist_row[..self.params.n_neighbors].to_vec();
-            knn_indices_trimmed.push(idx_trim);
-            knn_dists_trimmed.push(dist_trim);
-        }
+        let (knn_indices_trimmed, knn_dists_trimmed) = validate_and_trim_precomputed_knn(
+            knn_indices,
+            knn_dists,
+            n_samples,
+            self.params.n_neighbors,
+        )?;
 
         let (sigmas, rhos) = smooth_knn_dist(
             &knn_dists_trimmed,
@@ -378,46 +336,18 @@ impl UmapModel {
         let n_epochs = self
             .params
             .n_epochs
-            .unwrap_or_else(|| if n_samples <= 10_000 { 500 } else { 200 });
+            .unwrap_or(if n_samples <= 10_000 { 500 } else { 200 });
 
         let (a, b) = find_ab_params(self.params.spread, self.params.min_dist);
         self.a = a;
         self.b = b;
 
-        if knn_indices.len() != n_samples || knn_dists.len() != n_samples {
-            return Err(UmapError::InvalidParameter(
-                "precomputed knn row count must match number of samples".to_string(),
-            ));
-        }
-
-        let mut knn_indices_trimmed = Vec::with_capacity(n_samples);
-        let mut knn_dists_trimmed = Vec::with_capacity(n_samples);
-        for row in 0..n_samples {
-            let idx_row = &knn_indices[row];
-            let dist_row = &knn_dists[row];
-            if idx_row.len() < self.params.n_neighbors || dist_row.len() < self.params.n_neighbors {
-                return Err(UmapError::InvalidParameter(
-                    "precomputed knn columns must be >= n_neighbors".to_string(),
-                ));
-            }
-            if idx_row.len() != dist_row.len() {
-                return Err(UmapError::InvalidParameter(
-                    "precomputed knn index/dist row lengths must match".to_string(),
-                ));
-            }
-
-            let idx_trim = idx_row[..self.params.n_neighbors].to_vec();
-            for &idx in &idx_trim {
-                if idx >= n_samples {
-                    return Err(UmapError::InvalidParameter(
-                        "precomputed knn index out of range".to_string(),
-                    ));
-                }
-            }
-            let dist_trim = dist_row[..self.params.n_neighbors].to_vec();
-            knn_indices_trimmed.push(idx_trim);
-            knn_dists_trimmed.push(dist_trim);
-        }
+        let (knn_indices_trimmed, knn_dists_trimmed) = validate_and_trim_precomputed_knn(
+            knn_indices,
+            knn_dists,
+            n_samples,
+            self.params.n_neighbors,
+        )?;
 
         let (sigmas, rhos) = smooth_knn_dist(
             &knn_dists_trimmed,
@@ -513,12 +443,12 @@ impl UmapModel {
         let (indices, dists) = if let Some(train_data) = train_data_dense {
             exact_nearest_neighbors_to_reference(query, train_data, n_neighbors, self.params.metric)
         } else if let Some(train_data) = train_data_sparse {
-            if self.params.metric != Metric::Euclidean {
-                return Err(UmapError::InvalidParameter(
-                    "sparse-trained transform currently supports euclidean metric only".to_string(),
-                ));
-            }
-            sparse::exact_nearest_neighbors_dense_query_euclidean(query, train_data, n_neighbors)?
+            sparse::exact_nearest_neighbors_dense_query(
+                query,
+                train_data,
+                n_neighbors,
+                self.params.metric,
+            )?
         } else {
             return Err(UmapError::NotFitted);
         };
@@ -683,6 +613,75 @@ pub fn fit_transform_sparse_csr(
     model.fit_transform_sparse_csr(data)
 }
 
+fn validate_and_trim_precomputed_knn(
+    knn_indices: &[Vec<usize>],
+    knn_dists: &[Vec<f32>],
+    n_samples: usize,
+    n_neighbors: usize,
+) -> Result<KnnRows, UmapError> {
+    if knn_indices.len() != n_samples || knn_dists.len() != n_samples {
+        return Err(UmapError::InvalidParameter(
+            "precomputed knn row count must match number of samples".to_string(),
+        ));
+    }
+
+    let mut idx_trimmed = Vec::with_capacity(n_samples);
+    let mut dist_trimmed = Vec::with_capacity(n_samples);
+
+    for row_idx in 0..n_samples {
+        let idx_row = &knn_indices[row_idx];
+        let dist_row = &knn_dists[row_idx];
+
+        if idx_row.len() < n_neighbors || dist_row.len() < n_neighbors {
+            return Err(UmapError::InvalidParameter(
+                "precomputed knn columns must be >= n_neighbors".to_string(),
+            ));
+        }
+        if idx_row.len() != dist_row.len() {
+            return Err(UmapError::InvalidParameter(
+                "precomputed knn index/dist row lengths must match".to_string(),
+            ));
+        }
+
+        let idx_row = &idx_row[..n_neighbors];
+        let dist_row = &dist_row[..n_neighbors];
+        let mut seen = HashSet::with_capacity(n_neighbors * 2);
+        let mut prev = f32::NEG_INFINITY;
+
+        for col_idx in 0..n_neighbors {
+            let idx = idx_row[col_idx];
+            let dist = dist_row[col_idx];
+            if idx >= n_samples {
+                return Err(UmapError::InvalidParameter(format!(
+                    "precomputed knn index out of range at row {row_idx}, col {col_idx}"
+                )));
+            }
+            if !dist.is_finite() || dist < 0.0 {
+                return Err(UmapError::InvalidParameter(format!(
+                    "precomputed knn distance must be finite and >= 0 at row {row_idx}, col {col_idx}"
+                )));
+            }
+            if !seen.insert(idx) {
+                return Err(UmapError::InvalidParameter(format!(
+                    "precomputed knn row {row_idx} contains duplicate index {idx}"
+                )));
+            }
+            if col_idx > 0 && dist + SMOOTH_K_TOLERANCE < prev {
+                return Err(UmapError::InvalidParameter(format!(
+                    "precomputed knn distances must be non-decreasing within each row; row {row_idx} has dist[{col_idx}]={dist} < dist[{}]={prev}",
+                    col_idx - 1
+                )));
+            }
+            prev = dist;
+        }
+
+        idx_trimmed.push(idx_row.to_vec());
+        dist_trimmed.push(dist_row.to_vec());
+    }
+
+    Ok((idx_trimmed, dist_trimmed))
+}
+
 fn validate_data(data: &[Vec<f32>]) -> Result<(usize, usize), UmapError> {
     if data.is_empty() {
         return Err(UmapError::EmptyData);
@@ -705,6 +704,14 @@ fn validate_data(data: &[Vec<f32>]) -> Result<(usize, usize), UmapError> {
                 expected: n_features,
                 got: row.len(),
             });
+        }
+    }
+
+    for (row_idx, row) in data.iter().enumerate() {
+        if row.iter().any(|v| !v.is_finite()) {
+            return Err(UmapError::InvalidParameter(format!(
+                "input contains non-finite value at row {row_idx}"
+            )));
         }
     }
 
@@ -1099,6 +1106,10 @@ fn approximate_nearest_neighbors_euclidean(
                 }
             }
             candidate_set.insert(i);
+            let exploration = (n_neighbors / 2).max(4).min(max_candidates);
+            for _ in 0..exploration {
+                candidate_set.insert(rng.gen_range(0..n_samples));
+            }
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
             candidate_vec.sort_unstable();
@@ -1194,6 +1205,10 @@ where
                 }
             }
             candidate_set.insert(i);
+            let exploration = (n_neighbors / 2).max(4).min(max_candidates);
+            for _ in 0..exploration {
+                candidate_set.insert(rng.gen_range(0..n_samples));
+            }
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
             candidate_vec.sort_unstable();
@@ -1296,6 +1311,10 @@ fn approximate_nearest_neighbors_cosine(
                 }
             }
             candidate_set.insert(i);
+            let exploration = (n_neighbors / 2).max(4).min(max_candidates);
+            for _ in 0..exploration {
+                candidate_set.insert(rng.gen_range(0..n_samples));
+            }
 
             let mut candidate_vec = candidate_set.into_iter().collect::<Vec<usize>>();
             candidate_vec.sort_unstable();
@@ -1873,8 +1892,8 @@ fn spectral_embedding_from_affinity_raw(
     let mut coords = vec![vec![0.0_f32; embedding_dim]; n_samples];
     for out_col in 0..embedding_dim {
         let eig_col = order[out_col + offset];
-        for row in 0..n_samples {
-            coords[row][out_col] = eig.eigenvectors[(row, eig_col)] as f32;
+        for (row, coord_row) in coords.iter_mut().enumerate().take(n_samples) {
+            coord_row[out_col] = eig.eigenvectors[(row, eig_col)] as f32;
         }
     }
 
@@ -1963,8 +1982,8 @@ fn spectral_init_connected(
     let mut coords = vec![vec![0.0_f32; n_components]; n_samples];
     for out_col in 0..n_components {
         let eig_col = order[out_col + 1];
-        for row in 0..n_samples {
-            coords[row][out_col] = eig.eigenvectors[(row, eig_col)] as f32;
+        for (row, coord_row) in coords.iter_mut().enumerate().take(n_samples) {
+            coord_row[out_col] = eig.eigenvectors[(row, eig_col)] as f32;
         }
     }
 
@@ -2126,9 +2145,9 @@ fn meta_component_layout_from_centroids(
     if n_graph_components <= 2 * embedding_dim {
         let k = n_graph_components.div_ceil(2);
         let mut layout = vec![vec![0.0_f32; embedding_dim]; n_graph_components];
-        for i in 0..n_graph_components {
+        for (i, row) in layout.iter_mut().enumerate().take(n_graph_components) {
             let axis = i % k;
-            layout[i][axis] = if i < k { 1.0 } else { -1.0 };
+            row[axis] = if i < k { 1.0 } else { -1.0 };
         }
         return Some(layout);
     }
@@ -2207,12 +2226,16 @@ fn spectral_init_connected_raw(
             affinity[i][j] = weight;
         }
     }
-    for i in 0..n_samples {
-        for j in (i + 1)..n_samples {
+    let mut i = 0usize;
+    while i < n_samples {
+        let mut j = i + 1;
+        while j < n_samples {
             let sym = affinity[i][j].max(affinity[j][i]);
             affinity[i][j] = sym;
             affinity[j][i] = sym;
+            j += 1;
         }
+        i += 1;
     }
 
     spectral_embedding_from_affinity_raw(&affinity, n_components, true)
@@ -2596,6 +2619,7 @@ fn euclidean_distance_with_grad(x: &[f32], y: &[f32]) -> (f32, Vec<f32>) {
     (dist, grad)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn optimize_layout_training(
     embedding: &mut Vec<Vec<f32>>,
     edges: &[Edge],
@@ -2695,8 +2719,9 @@ fn optimize_layout_training(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn optimize_layout_transform(
-    embedding: &mut Vec<Vec<f32>>,
+    embedding: &mut [Vec<f32>],
     base_embedding: &[Vec<f32>],
     edges: &[Edge],
     n_epochs: usize,
@@ -2795,8 +2820,9 @@ fn optimize_layout_transform(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn optimize_layout_inverse(
-    head_embedding: &mut Vec<Vec<f32>>,
+    head_embedding: &mut [Vec<f32>],
     tail_embedding: &[Vec<f32>],
     edges: &[Edge],
     fixed_rows: &[bool],
@@ -3135,6 +3161,34 @@ mod tests {
         );
     }
 
+    fn knn_recall_excluding_self(exact: &[Vec<usize>], approx: &[Vec<usize>]) -> f32 {
+        assert_eq!(exact.len(), approx.len());
+        let mut matched = 0usize;
+        let mut total = 0usize;
+        for (exact_row, approx_row) in exact.iter().zip(approx.iter()) {
+            assert_eq!(exact_row.len(), approx_row.len());
+            if exact_row.len() <= 1 {
+                continue;
+            }
+            let exact_set = exact_row
+                .iter()
+                .skip(1)
+                .copied()
+                .collect::<HashSet<usize>>();
+            for idx in approx_row.iter().skip(1) {
+                if exact_set.contains(idx) {
+                    matched += 1;
+                }
+                total += 1;
+            }
+        }
+        if total == 0 {
+            1.0
+        } else {
+            matched as f32 / total as f32
+        }
+    }
+
     #[test]
     fn fit_transform_returns_expected_shape_and_finite_values() {
         let data = synthetic_data(80, 8);
@@ -3252,7 +3306,7 @@ mod tests {
         let k = 12;
 
         let (dense_idx, dense_dist) = exact_nearest_neighbors(&data, k, Metric::Euclidean);
-        let (sparse_idx, sparse_dist) = sparse::exact_nearest_neighbors_euclidean(&csr, k);
+        let (sparse_idx, sparse_dist) = sparse::exact_nearest_neighbors(&csr, k, Metric::Euclidean);
 
         assert_eq!(dense_idx, sparse_idx);
         for (row_dense, row_sparse) in dense_dist.iter().zip(sparse_dist.iter()) {
@@ -3299,6 +3353,62 @@ mod tests {
     }
 
     #[test]
+    fn sparse_csr_fit_transform_supports_manhattan_metric() {
+        let data = sparse_like_data(68, 90);
+        let csr = dense_to_csr(&data);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Manhattan,
+            init: InitMethod::Random,
+            random_seed: 2048,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse manhattan fit should succeed");
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn sparse_csr_fit_transform_supports_cosine_metric() {
+        let data = sparse_like_data(66, 88);
+        let query = data.iter().skip(56).cloned().collect::<Vec<Vec<f32>>>();
+        let csr = dense_to_csr(&data);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Cosine,
+            init: InitMethod::Random,
+            random_seed: 4096,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let mut model = UmapModel::new(params);
+        let embedding = model
+            .fit_transform_sparse_csr(csr)
+            .expect("sparse cosine fit should succeed");
+        assert_eq!(embedding.len(), data.len());
+        assert_eq!(embedding[0].len(), 2);
+        assert_all_finite(&embedding);
+
+        let transformed = model
+            .transform(&query)
+            .expect("sparse cosine transform should succeed");
+        assert_eq!(transformed.len(), query.len());
+        assert_eq!(transformed[0].len(), 2);
+        assert_all_finite(&transformed);
+    }
+
+    #[test]
     fn sparse_csr_random_fit_matches_dense_fit() {
         let data = sparse_like_data(64, 97);
         let csr = dense_to_csr(&data);
@@ -3314,7 +3424,7 @@ mod tests {
         };
 
         let (knn_idx, knn_dist) =
-            sparse::exact_nearest_neighbors_euclidean(&csr, params.n_neighbors);
+            sparse::exact_nearest_neighbors(&csr, params.n_neighbors, Metric::Euclidean);
 
         let mut dense_model = UmapModel::new(params.clone());
         let dense_embedding = dense_model
@@ -3327,6 +3437,28 @@ mod tests {
             .expect("sparse fit should succeed");
 
         assert_eq!(dense_embedding, sparse_embedding);
+    }
+
+    #[test]
+    fn fit_rejects_non_finite_input_values() {
+        let mut data = synthetic_data(32, 6);
+        data[7][3] = f32::NAN;
+        let mut model = UmapModel::new(UmapParams {
+            n_neighbors: 8,
+            n_components: 2,
+            n_epochs: Some(20),
+            init: InitMethod::Random,
+            random_seed: 77,
+            ..UmapParams::default()
+        });
+        let err = model
+            .fit_transform(&data)
+            .expect_err("non-finite input must be rejected");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+        assert!(
+            err.to_string().contains("non-finite"),
+            "unexpected error message: {err}"
+        );
     }
 
     #[test]
@@ -3352,6 +3484,40 @@ mod tests {
         assert_eq!(embedding.len(), 90);
         assert_eq!(embedding[0].len(), 2);
         assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn approximate_knn_recall_reasonable_euclidean() {
+        let data = synthetic_data(240, 8);
+        let k = 12;
+        let (exact_idx, _) = exact_nearest_neighbors(&data, k, Metric::Euclidean);
+        let (approx_idx, _) = approximate_nearest_neighbors(
+            &data,
+            k,
+            Metric::Euclidean,
+            30,
+            8,
+            0x1234_5678_9ABC_DEF0,
+        );
+        let recall = knn_recall_excluding_self(&exact_idx, &approx_idx);
+        assert!(
+            recall >= 0.70,
+            "euclidean ann recall is too low: got {recall:.4}"
+        );
+    }
+
+    #[test]
+    fn approximate_knn_recall_reasonable_cosine() {
+        let data = synthetic_data(220, 9);
+        let k = 10;
+        let (exact_idx, _) = exact_nearest_neighbors(&data, k, Metric::Cosine);
+        let (approx_idx, _) =
+            approximate_nearest_neighbors(&data, k, Metric::Cosine, 28, 8, 0xCAFEBABE_DEADC0DE);
+        let recall = knn_recall_excluding_self(&exact_idx, &approx_idx);
+        assert!(
+            recall >= 0.65,
+            "cosine ann recall is too low: got {recall:.4}"
+        );
     }
 
     #[test]
@@ -3538,12 +3704,59 @@ mod tests {
 
         let mut model = UmapModel::new(params);
         let embedding = model
-            .fit_transform_with_knn_metric(&data, &knn_idx_no_self, &knn_dist_no_self, Metric::Euclidean)
+            .fit_transform_with_knn_metric(
+                &data,
+                &knn_idx_no_self,
+                &knn_dist_no_self,
+                Metric::Euclidean,
+            )
             .expect("precomputed non-self knn fit should succeed");
 
         assert_eq!(embedding.len(), data.len());
         assert_eq!(embedding[0].len(), 2);
         assert_all_finite(&embedding);
+    }
+
+    #[test]
+    fn precomputed_knn_rejects_invalid_distances() {
+        let data = synthetic_data(64, 6);
+        let params = UmapParams {
+            n_neighbors: 10,
+            n_components: 2,
+            n_epochs: Some(40),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 2027,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+        let (knn_idx, mut knn_dist) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+
+        knn_dist[0][1] = -0.5;
+        let mut model = UmapModel::new(params.clone());
+        let err = model
+            .fit_transform_with_knn_metric(&data, &knn_idx, &knn_dist, Metric::Euclidean)
+            .expect_err("negative distance must be rejected");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+
+        let (knn_idx2, mut knn_dist2) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+        knn_dist2[0][2] = f32::NAN;
+        let mut model = UmapModel::new(params.clone());
+        let err = model
+            .fit_transform_with_knn_metric(&data, &knn_idx2, &knn_dist2, Metric::Euclidean)
+            .expect_err("non-finite distance must be rejected");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
+
+        let (knn_idx3, mut knn_dist3) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+        knn_dist3[0].swap(2, 5);
+        let mut model = UmapModel::new(params);
+        let err = model
+            .fit_transform_with_knn_metric(&data, &knn_idx3, &knn_dist3, Metric::Euclidean)
+            .expect_err("unsorted distances must be rejected");
+        assert!(matches!(err, UmapError::InvalidParameter(_)));
     }
 
     #[test]
@@ -3605,7 +3818,8 @@ mod tests {
         let (data, labels) = disconnected_component_data(4, 60);
         let csr = dense_to_csr(&data);
         let n_neighbors = 10;
-        let (knn_indices, knn_dists) = sparse::exact_nearest_neighbors_euclidean(&csr, n_neighbors);
+        let (knn_indices, knn_dists) =
+            sparse::exact_nearest_neighbors(&csr, n_neighbors, Metric::Euclidean);
         let (sigmas, rhos) =
             smooth_knn_dist(&knn_dists, n_neighbors as f32, 1.0, DEFAULT_BANDWIDTH, true);
         let directed = compute_membership_strengths(&knn_indices, &knn_dists, &sigmas, &rhos);
