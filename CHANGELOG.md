@@ -9,9 +9,11 @@ for user-facing milestones.
 
 ### Highlights
 
+- Published the Python binding on PyPI under the unified distribution name
+  `umap-rs`, with the import path `umap_rs`.
 - Shipped typed Python package assets for `umap_rs`, including
   `__init__.pyi`, `_api.pyi`, and `py.typed`, plus `UmapKwargs`, richer
-  docstrings, hover text, and manual smoke examples for the public API.
+  docstrings, hover text, and clearer signature help for the public API.
 - Documented the Python API in layers: dense `Umap` and one-shot
   `fit_transform` are the default path, while
   `Umap.fit_transform_with_knn(...)` remains an advanced precomputed-kNN
@@ -19,8 +21,16 @@ for user-facing milestones.
 - Standardized public Python keyword naming on `**kwargs` and removed the
   overlapping stub pattern that caused Pyright/Pylance unreachable-overload
   diagnostics.
-- Updated repository and package docs for the 0.3.0 Python surface and current
-  scope boundary.
-- Added release metadata, a Python release workflow, and verified the binding
-  with `maturin build --release --sdist`, `twine check`, and clean
-  wheel-install smoke tests.
+- Added automated Python release packaging for Linux x86_64, Windows x86_64,
+  and macOS arm64 across Python 3.9-3.13, plus a non-blocking Python 3.14
+  sdist probe.
+- Verified release artifacts with `maturin build --release --sdist`,
+  `twine check`, editable-install tests, import smoke tests, and CI wheel/sdist
+  smoke installs.
+
+### Naming Notes
+
+- The Python distribution and import path are now unified as `umap-rs` and
+  `umap_rs`.
+- Published support is Python 3.9 through 3.13. Python 3.14 was probed in CI
+  from sdist, but it is not yet part of the supported range.
