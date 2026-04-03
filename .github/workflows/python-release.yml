@@ -1,0 +1,157 @@
+name: python-release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "rust-umap-py-v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-wheel:
+    name: build-wheel (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            os: ubuntu-latest
+          - name: windows-x86_64
+            os: windows-latest
+          - name: macos-x86_64
+            os: macos-13
+          - name: macos-arm64
+            os: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python
+          sccache: "true"
+          manylinux: auto
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.name }}
+          path: rust_umap_py/dist/*.whl
+          if-no-files-found: error
+
+  build-sdist:
+    name: build-sdist
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --manifest-path rust_umap_py/Cargo.toml --out rust_umap_py/dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: rust_umap_py/dist/*.tar.gz
+          if-no-files-found: error
+
+  verify-artifacts:
+    name: verify-artifacts
+    needs: [build-wheel, build-sdist]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Check artifact metadata
+        run: uvx twine check dist/*
+
+      - name: Install smoke test from linux wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          wheel_path="$(find dist -maxdepth 1 -type f -name '*cp312*manylinux*.whl' | head -n 1)"
+          if [[ -z "${wheel_path}" ]]; then
+            echo "linux cp312 wheel not found" >&2
+            exit 1
+          fi
+
+          uv venv --python "$(command -v python)" .venv-wheel-smoke
+          uv pip install --python .venv-wheel-smoke/bin/python "${wheel_path}"
+          .venv-wheel-smoke/bin/python - <<'PY'
+          import inspect
+          import numpy as np
+          from rust_umap_py import Umap, UmapKwargs, __version__, fit_transform
+
+          x = np.random.default_rng(0).normal(size=(32, 6)).astype(np.float32)
+          kwargs: UmapKwargs = {"n_neighbors": 10, "n_components": 2, "init": "random"}
+          emb = fit_transform(x, **kwargs)
+          model = Umap(**kwargs)
+
+          assert __version__ == "0.3.0"
+          assert emb.shape == (32, 2)
+          assert emb.dtype == np.float32
+          assert "kwargs" in inspect.signature(fit_transform).parameters
+          assert hasattr(model, "fit_transform_with_knn")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-release-dist
+          path: dist/*
+          if-no-files-found: error
+
+  publish-pypi:
+    name: publish-pypi
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [verify-artifacts]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment:
+      name: pypi
+      url: https://pypi.org/p/rust-umap-py
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-release-dist
+          path: dist
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

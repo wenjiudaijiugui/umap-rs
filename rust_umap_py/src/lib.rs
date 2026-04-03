@@ -116,10 +116,7 @@ fn array2_i64_to_usize_rows(
     Ok(rows)
 }
 
-fn array1_i64_to_usize_vec(data: &PyReadonlyArray1<'_, i64>, name: &str) -> PyResult<Vec<usize>> {
-    let slice = data
-        .as_slice()
-        .map_err(|_| PyValueError::new_err(format!("{name} must be contiguous")))?;
+fn i64_slice_to_usize_vec(slice: &[i64], name: &str) -> PyResult<Vec<usize>> {
     let mut out = Vec::with_capacity(slice.len());
     for &value in slice {
         if value < 0 {
@@ -130,6 +127,13 @@ fn array1_i64_to_usize_vec(data: &PyReadonlyArray1<'_, i64>, name: &str) -> PyRe
         out.push(value as usize);
     }
     Ok(out)
+}
+
+fn array1_i64_to_usize_vec(data: &PyReadonlyArray1<'_, i64>, name: &str) -> PyResult<Vec<usize>> {
+    let slice = data
+        .as_slice()
+        .map_err(|_| PyValueError::new_err(format!("{name} must be contiguous")))?;
+    i64_slice_to_usize_vec(slice, name)
 }
 
 fn array1_f32_to_vec(data: &PyReadonlyArray1<'_, f32>, name: &str) -> PyResult<Vec<f32>> {
@@ -153,6 +157,81 @@ fn sparse_csr_from_py(
     }
     let n_rows = indptr.len() - 1;
     SparseCsrMatrix::new(n_rows, n_cols, indptr, indices, values).map_err(map_umap_error)
+}
+
+fn validate_precomputed_shapes(
+    data_n_rows: usize,
+    knn_indices: &PyReadonlyArray2<'_, i64>,
+    knn_dists: &PyReadonlyArray2<'_, f32>,
+    n_neighbors: usize,
+) -> PyResult<()> {
+    if knn_indices.shape() != knn_dists.shape() {
+        return Err(PyValueError::new_err(
+            "knn_indices and knn_dists must have identical shapes",
+        ));
+    }
+    if knn_indices.shape()[0] != data_n_rows {
+        return Err(PyValueError::new_err(
+            "knn row count must match data row count",
+        ));
+    }
+    if knn_indices.shape()[1] < n_neighbors {
+        return Err(PyValueError::new_err(format!(
+            "knn columns must be >= n_neighbors ({n_neighbors})"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_precomputed_distance_values(knn_dists: &PyReadonlyArray2<'_, f32>) -> PyResult<()> {
+    for &dist in knn_dists.as_array() {
+        if !dist.is_finite() {
+            return Err(PyValueError::new_err(
+                "knn_dists must contain only finite values",
+            ));
+        }
+        if dist < 0.0 {
+            return Err(PyValueError::new_err("knn_dists must be non-negative"));
+        }
+    }
+    Ok(())
+}
+
+fn precomputed_knn_rows_from_arrays(
+    knn_indices: &PyReadonlyArray2<'_, i64>,
+    knn_dists: &PyReadonlyArray2<'_, f32>,
+) -> PyResult<(Vec<Vec<usize>>, Vec<Vec<f32>>)> {
+    let knn_idx_rows = array2_i64_to_usize_rows(knn_indices, "knn_indices")?;
+    let knn_dist_rows = array2_f32_to_rows(knn_dists, "knn_dists")?;
+    Ok((knn_idx_rows, knn_dist_rows))
+}
+
+enum F32MatrixInput<'py> {
+    Slice {
+        values: &'py [f32],
+        n_rows: usize,
+        n_cols: usize,
+    },
+    Rows {
+        rows: Vec<Vec<f32>>,
+    },
+}
+
+impl<'py> F32MatrixInput<'py> {
+    fn from_py(data: &'py PyReadonlyArray2<'py, f32>, name: &str) -> PyResult<Self> {
+        let (n_rows, n_cols) = array2_dims(data, name)?;
+        if let Ok(values) = data.as_slice() {
+            Ok(Self::Slice {
+                values,
+                n_rows,
+                n_cols,
+            })
+        } else {
+            Ok(Self::Rows {
+                rows: array2_f32_to_rows(data, name)?,
+            })
+        }
+    }
 }
 
 fn rows_to_numpy<'py>(
@@ -342,14 +421,17 @@ impl PyUmapCore {
     }
 
     fn fit(&mut self, py: Python<'_>, data: PyReadonlyArray2<'_, f32>) -> PyResult<()> {
-        let (n_rows, n_cols) = array2_dims(&data, "data")?;
-        if let Ok(slice) = data.as_slice() {
-            py.allow_threads(|| self.inner.fit_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)
-        } else {
-            let rows = array2_f32_to_rows(&data, "data")?;
-            py.allow_threads(|| self.inner.fit(&rows))
-                .map_err(map_umap_error)
+        match F32MatrixInput::from_py(&data, "data")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => py
+                .allow_threads(|| self.inner.fit_dense(values, n_rows, n_cols))
+                .map_err(map_umap_error),
+            F32MatrixInput::Rows { rows, .. } => py
+                .allow_threads(|| self.inner.fit(&rows))
+                .map_err(map_umap_error),
         }
     }
 
@@ -371,18 +453,23 @@ impl PyUmapCore {
         py: Python<'py>,
         data: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let (n_rows, n_cols) = array2_dims(&data, "data")?;
-        if let Ok(slice) = data.as_slice() {
-            let embedding = py
-                .allow_threads(|| self.inner.fit_transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            dense_to_numpy(py, embedding)
-        } else {
-            let rows = array2_f32_to_rows(&data, "data")?;
-            let embedding = py
-                .allow_threads(|| self.inner.fit_transform(&rows))
-                .map_err(map_umap_error)?;
-            rows_to_numpy(py, embedding, self.inner.params().n_components)
+        match F32MatrixInput::from_py(&data, "data")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let embedding = py
+                    .allow_threads(|| self.inner.fit_transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                dense_to_numpy(py, embedding)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let embedding = py
+                    .allow_threads(|| self.inner.fit_transform(&rows))
+                    .map_err(map_umap_error)?;
+                rows_to_numpy(py, embedding, self.inner.params().n_components)
+            }
         }
     }
 
@@ -392,18 +479,23 @@ impl PyUmapCore {
         data: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let (n_rows, n_cols) = array2_dims(&data, "data")?;
-        if let Ok(slice) = data.as_slice() {
-            let embedding = py
-                .allow_threads(|| self.inner.fit_transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            copy_dense_into_out(&embedding, out)
-        } else {
-            let rows = array2_f32_to_rows(&data, "data")?;
-            let embedding = py
-                .allow_threads(|| self.inner.fit_transform(&rows))
-                .map_err(map_umap_error)?;
-            copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+        match F32MatrixInput::from_py(&data, "data")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let embedding = py
+                    .allow_threads(|| self.inner.fit_transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                copy_dense_into_out(&embedding, out)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let embedding = py
+                    .allow_threads(|| self.inner.fit_transform(&rows))
+                    .map_err(map_umap_error)?;
+                copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+            }
         }
     }
 
@@ -438,7 +530,13 @@ impl PyUmapCore {
         copy_rows_into_out(&embedding, self.inner.params().n_components, out)
     }
 
-    #[pyo3(signature = (data, knn_indices, knn_dists, knn_metric = "euclidean"))]
+    #[pyo3(signature = (
+        data,
+        knn_indices,
+        knn_dists,
+        knn_metric = "euclidean",
+        validate_precomputed = true
+    ))]
     fn fit_transform_with_knn<'py>(
         &mut self,
         py: Python<'py>,
@@ -446,45 +544,103 @@ impl PyUmapCore {
         knn_indices: PyReadonlyArray2<'py, i64>,
         knn_dists: PyReadonlyArray2<'py, f32>,
         knn_metric: &str,
+        validate_precomputed: bool,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        if knn_indices.shape() != knn_dists.shape() {
-            return Err(PyValueError::new_err(
-                "knn_indices and knn_dists must have identical shapes",
-            ));
-        }
-        if knn_indices.shape()[1] < self.inner.params().n_neighbors {
-            return Err(PyValueError::new_err(format!(
-                "knn columns must be >= n_neighbors ({})",
-                self.inner.params().n_neighbors
-            )));
-        }
-
-        let rows = array2_f32_to_rows(&data, "data")?;
-        if knn_indices.shape()[0] != rows.len() {
-            return Err(PyValueError::new_err(
-                "knn row count must match data row count",
-            ));
-        }
-
-        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices, "knn_indices")?;
-        let knn_dist_rows = array2_f32_to_rows(&knn_dists, "knn_dists")?;
+        let data = F32MatrixInput::from_py(&data, "data")?;
         let knn_metric = parse_metric(knn_metric)?;
 
-        let embedding = py
-            .allow_threads(|| {
-                self.inner.fit_transform_with_knn_metric(
-                    &rows,
-                    &knn_idx_rows,
-                    &knn_dist_rows,
-                    knn_metric,
-                )
-            })
-            .map_err(map_umap_error)?;
+        match data {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                if let (Ok(knn_idx_slice), Ok(knn_dist_slice)) =
+                    (knn_indices.as_slice(), knn_dists.as_slice())
+                {
+                    let knn_idx_shape = knn_indices.shape();
+                    let knn_dist_shape = knn_dists.shape();
+                    let embedding = py
+                        .allow_threads(|| {
+                            self.inner.fit_transform_with_knn_metric_dense_i64_flat(
+                                values,
+                                n_rows,
+                                n_cols,
+                                knn_idx_slice,
+                                knn_idx_shape[0],
+                                knn_idx_shape[1],
+                                knn_dist_slice,
+                                knn_dist_shape[0],
+                                knn_dist_shape[1],
+                                knn_metric,
+                                validate_precomputed,
+                            )
+                        })
+                        .map_err(map_umap_error)?;
+                    dense_to_numpy(py, embedding)
+                } else {
+                    validate_precomputed_shapes(
+                        n_rows,
+                        &knn_indices,
+                        &knn_dists,
+                        self.inner.params().n_neighbors,
+                    )?;
+                    if validate_precomputed {
+                        validate_precomputed_distance_values(&knn_dists)?;
+                    }
+                    let (knn_idx_rows, knn_dist_rows) =
+                        precomputed_knn_rows_from_arrays(&knn_indices, &knn_dists)?;
+                    let embedding = py
+                        .allow_threads(|| {
+                            self.inner.fit_transform_with_knn_metric_dense(
+                                values,
+                                n_rows,
+                                n_cols,
+                                &knn_idx_rows,
+                                &knn_dist_rows,
+                                knn_metric,
+                            )
+                        })
+                        .map_err(map_umap_error)?;
+                    dense_to_numpy(py, embedding)
+                }
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                validate_precomputed_shapes(
+                    rows.len(),
+                    &knn_indices,
+                    &knn_dists,
+                    self.inner.params().n_neighbors,
+                )?;
+                if validate_precomputed {
+                    validate_precomputed_distance_values(&knn_dists)?;
+                }
+                let (knn_idx_rows, knn_dist_rows) =
+                    precomputed_knn_rows_from_arrays(&knn_indices, &knn_dists)?;
+                let embedding = py
+                    .allow_threads(|| {
+                        self.inner.fit_transform_with_knn_metric(
+                            &rows,
+                            &knn_idx_rows,
+                            &knn_dist_rows,
+                            knn_metric,
+                        )
+                    })
+                    .map_err(map_umap_error)?;
 
-        rows_to_numpy(py, embedding, self.inner.params().n_components)
+                rows_to_numpy(py, embedding, self.inner.params().n_components)
+            }
+        }
     }
 
-    #[pyo3(signature = (data, knn_indices, knn_dists, out, knn_metric = "euclidean"))]
+    #[pyo3(signature = (
+        data,
+        knn_indices,
+        knn_dists,
+        out,
+        knn_metric = "euclidean",
+        validate_precomputed = true
+    ))]
     fn fit_transform_with_knn_into<'py>(
         &mut self,
         py: Python<'py>,
@@ -493,42 +649,93 @@ impl PyUmapCore {
         knn_dists: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
         knn_metric: &str,
+        validate_precomputed: bool,
     ) -> PyResult<()> {
-        if knn_indices.shape() != knn_dists.shape() {
-            return Err(PyValueError::new_err(
-                "knn_indices and knn_dists must have identical shapes",
-            ));
-        }
-        if knn_indices.shape()[1] < self.inner.params().n_neighbors {
-            return Err(PyValueError::new_err(format!(
-                "knn columns must be >= n_neighbors ({})",
-                self.inner.params().n_neighbors
-            )));
-        }
-
-        let rows = array2_f32_to_rows(&data, "data")?;
-        if knn_indices.shape()[0] != rows.len() {
-            return Err(PyValueError::new_err(
-                "knn row count must match data row count",
-            ));
-        }
-
-        let knn_idx_rows = array2_i64_to_usize_rows(&knn_indices, "knn_indices")?;
-        let knn_dist_rows = array2_f32_to_rows(&knn_dists, "knn_dists")?;
+        let data = F32MatrixInput::from_py(&data, "data")?;
         let knn_metric = parse_metric(knn_metric)?;
 
-        let embedding = py
-            .allow_threads(|| {
-                self.inner.fit_transform_with_knn_metric(
-                    &rows,
-                    &knn_idx_rows,
-                    &knn_dist_rows,
-                    knn_metric,
-                )
-            })
-            .map_err(map_umap_error)?;
+        match data {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                if let (Ok(knn_idx_slice), Ok(knn_dist_slice)) =
+                    (knn_indices.as_slice(), knn_dists.as_slice())
+                {
+                    let knn_idx_shape = knn_indices.shape();
+                    let knn_dist_shape = knn_dists.shape();
+                    let embedding = py
+                        .allow_threads(|| {
+                            self.inner.fit_transform_with_knn_metric_dense_i64_flat(
+                                values,
+                                n_rows,
+                                n_cols,
+                                knn_idx_slice,
+                                knn_idx_shape[0],
+                                knn_idx_shape[1],
+                                knn_dist_slice,
+                                knn_dist_shape[0],
+                                knn_dist_shape[1],
+                                knn_metric,
+                                validate_precomputed,
+                            )
+                        })
+                        .map_err(map_umap_error)?;
+                    copy_dense_into_out(&embedding, out)
+                } else {
+                    validate_precomputed_shapes(
+                        n_rows,
+                        &knn_indices,
+                        &knn_dists,
+                        self.inner.params().n_neighbors,
+                    )?;
+                    if validate_precomputed {
+                        validate_precomputed_distance_values(&knn_dists)?;
+                    }
+                    let (knn_idx_rows, knn_dist_rows) =
+                        precomputed_knn_rows_from_arrays(&knn_indices, &knn_dists)?;
+                    let embedding = py
+                        .allow_threads(|| {
+                            self.inner.fit_transform_with_knn_metric_dense(
+                                values,
+                                n_rows,
+                                n_cols,
+                                &knn_idx_rows,
+                                &knn_dist_rows,
+                                knn_metric,
+                            )
+                        })
+                        .map_err(map_umap_error)?;
+                    copy_dense_into_out(&embedding, out)
+                }
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                validate_precomputed_shapes(
+                    rows.len(),
+                    &knn_indices,
+                    &knn_dists,
+                    self.inner.params().n_neighbors,
+                )?;
+                if validate_precomputed {
+                    validate_precomputed_distance_values(&knn_dists)?;
+                }
+                let (knn_idx_rows, knn_dist_rows) =
+                    precomputed_knn_rows_from_arrays(&knn_indices, &knn_dists)?;
+                let embedding = py
+                    .allow_threads(|| {
+                        self.inner.fit_transform_with_knn_metric(
+                            &rows,
+                            &knn_idx_rows,
+                            &knn_dist_rows,
+                            knn_metric,
+                        )
+                    })
+                    .map_err(map_umap_error)?;
 
-        copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+                copy_rows_into_out(&embedding, self.inner.params().n_components, out)
+            }
+        }
     }
 
     fn transform<'py>(
@@ -536,18 +743,23 @@ impl PyUmapCore {
         py: Python<'py>,
         query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let (n_rows, n_cols) = array2_dims(&query, "query")?;
-        if let Ok(slice) = query.as_slice() {
-            let out = py
-                .allow_threads(|| self.inner.transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            dense_to_numpy(py, out)
-        } else {
-            let rows = array2_f32_to_rows(&query, "query")?;
-            let out = py
-                .allow_threads(|| self.inner.transform(&rows))
-                .map_err(map_umap_error)?;
-            rows_to_numpy(py, out, self.inner.params().n_components)
+        match F32MatrixInput::from_py(&query, "query")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let out = py
+                    .allow_threads(|| self.inner.transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                dense_to_numpy(py, out)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let out = py
+                    .allow_threads(|| self.inner.transform(&rows))
+                    .map_err(map_umap_error)?;
+                rows_to_numpy(py, out, self.inner.params().n_components)
+            }
         }
     }
 
@@ -557,18 +769,23 @@ impl PyUmapCore {
         query: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let (n_rows, n_cols) = array2_dims(&query, "query")?;
-        if let Ok(slice) = query.as_slice() {
-            let transformed = py
-                .allow_threads(|| self.inner.transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            copy_dense_into_out(&transformed, out)
-        } else {
-            let rows = array2_f32_to_rows(&query, "query")?;
-            let transformed = py
-                .allow_threads(|| self.inner.transform(&rows))
-                .map_err(map_umap_error)?;
-            copy_rows_into_out(&transformed, self.inner.params().n_components, out)
+        match F32MatrixInput::from_py(&query, "query")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let transformed = py
+                    .allow_threads(|| self.inner.transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                copy_dense_into_out(&transformed, out)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let transformed = py
+                    .allow_threads(|| self.inner.transform(&rows))
+                    .map_err(map_umap_error)?;
+                copy_rows_into_out(&transformed, self.inner.params().n_components, out)
+            }
         }
     }
 
@@ -577,18 +794,23 @@ impl PyUmapCore {
         py: Python<'py>,
         embedded_query: PyReadonlyArray2<'py, f32>,
     ) -> PyResult<Bound<'py, PyArray2<f32>>> {
-        let (n_rows, n_cols) = array2_dims(&embedded_query, "embedded_query")?;
-        if let Ok(slice) = embedded_query.as_slice() {
-            let out = py
-                .allow_threads(|| self.inner.inverse_transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            dense_to_numpy(py, out)
-        } else {
-            let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
-            let out = py
-                .allow_threads(|| self.inner.inverse_transform(&rows))
-                .map_err(map_umap_error)?;
-            rows_to_numpy(py, out, self.inner.n_features().unwrap_or(0))
+        match F32MatrixInput::from_py(&embedded_query, "embedded_query")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let out = py
+                    .allow_threads(|| self.inner.inverse_transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                dense_to_numpy(py, out)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let out = py
+                    .allow_threads(|| self.inner.inverse_transform(&rows))
+                    .map_err(map_umap_error)?;
+                rows_to_numpy(py, out, self.inner.n_features().unwrap_or(0))
+            }
         }
     }
 
@@ -598,18 +820,23 @@ impl PyUmapCore {
         embedded_query: PyReadonlyArray2<'py, f32>,
         out: PyReadwriteArray2<'py, f32>,
     ) -> PyResult<()> {
-        let (n_rows, n_cols) = array2_dims(&embedded_query, "embedded_query")?;
-        if let Ok(slice) = embedded_query.as_slice() {
-            let reconstructed = py
-                .allow_threads(|| self.inner.inverse_transform_dense(slice, n_rows, n_cols))
-                .map_err(map_umap_error)?;
-            copy_dense_into_out(&reconstructed, out)
-        } else {
-            let rows = array2_f32_to_rows(&embedded_query, "embedded_query")?;
-            let reconstructed = py
-                .allow_threads(|| self.inner.inverse_transform(&rows))
-                .map_err(map_umap_error)?;
-            copy_rows_into_out(&reconstructed, self.inner.n_features().unwrap_or(0), out)
+        match F32MatrixInput::from_py(&embedded_query, "embedded_query")? {
+            F32MatrixInput::Slice {
+                values,
+                n_rows,
+                n_cols,
+            } => {
+                let reconstructed = py
+                    .allow_threads(|| self.inner.inverse_transform_dense(values, n_rows, n_cols))
+                    .map_err(map_umap_error)?;
+                copy_dense_into_out(&reconstructed, out)
+            }
+            F32MatrixInput::Rows { rows, .. } => {
+                let reconstructed = py
+                    .allow_threads(|| self.inner.inverse_transform(&rows))
+                    .map_err(map_umap_error)?;
+                copy_rows_into_out(&reconstructed, self.inner.n_features().unwrap_or(0), out)
+            }
         }
     }
 

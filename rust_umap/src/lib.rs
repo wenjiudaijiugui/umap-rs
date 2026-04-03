@@ -272,10 +272,61 @@ impl<'a> DenseMatrixView<'a> {
     }
 }
 
+struct FlatF32MatrixView<'a> {
+    data: &'a [f32],
+    n_rows: usize,
+    n_cols: usize,
+}
+
+impl<'a> FlatF32MatrixView<'a> {
+    fn new(data: &'a [f32], n_rows: usize, n_cols: usize) -> Result<Self, UmapError> {
+        if data.len() != n_rows.saturating_mul(n_cols) {
+            return Err(UmapError::InvalidParameter(format!(
+                "flat matrix view length mismatch: expected {}, got {}",
+                n_rows.saturating_mul(n_cols),
+                data.len()
+            )));
+        }
+        Ok(Self {
+            data,
+            n_rows,
+            n_cols,
+        })
+    }
+}
+
+struct UsizeMatrixView<'a> {
+    data: &'a [usize],
+    n_rows: usize,
+    n_cols: usize,
+}
+
+impl<'a> UsizeMatrixView<'a> {
+    fn new(data: &'a [usize], n_rows: usize, n_cols: usize) -> Result<Self, UmapError> {
+        if data.len() != n_rows.saturating_mul(n_cols) {
+            return Err(UmapError::InvalidParameter(format!(
+                "usize matrix view length mismatch: expected {}, got {}",
+                n_rows.saturating_mul(n_cols),
+                data.len()
+            )));
+        }
+        Ok(Self {
+            data,
+            n_rows,
+            n_cols,
+        })
+    }
+}
+
 trait RowMatrix {
     fn n_rows(&self) -> usize;
     fn n_cols(&self) -> usize;
     fn row(&self, idx: usize) -> &[f32];
+}
+
+trait IndexRowMatrix {
+    fn n_rows(&self) -> usize;
+    fn row(&self, idx: usize) -> &[usize];
 }
 
 impl RowMatrix for [Vec<f32>] {
@@ -330,6 +381,52 @@ impl RowMatrix for DenseMatrixView<'_> {
     }
 
     fn row(&self, idx: usize) -> &[f32] {
+        let start = idx * self.n_cols;
+        &self.data[start..start + self.n_cols]
+    }
+}
+
+impl RowMatrix for FlatF32MatrixView<'_> {
+    fn n_rows(&self) -> usize {
+        self.n_rows
+    }
+
+    fn n_cols(&self) -> usize {
+        self.n_cols
+    }
+
+    fn row(&self, idx: usize) -> &[f32] {
+        let start = idx * self.n_cols;
+        &self.data[start..start + self.n_cols]
+    }
+}
+
+impl IndexRowMatrix for [Vec<usize>] {
+    fn n_rows(&self) -> usize {
+        self.len()
+    }
+
+    fn row(&self, idx: usize) -> &[usize] {
+        &self[idx]
+    }
+}
+
+impl IndexRowMatrix for Vec<Vec<usize>> {
+    fn n_rows(&self) -> usize {
+        self.len()
+    }
+
+    fn row(&self, idx: usize) -> &[usize] {
+        &self[idx]
+    }
+}
+
+impl IndexRowMatrix for UsizeMatrixView<'_> {
+    fn n_rows(&self) -> usize {
+        self.n_rows
+    }
+
+    fn row(&self, idx: usize) -> &[usize] {
         let start = idx * self.n_cols;
         &self.data[start..start + self.n_cols]
     }
@@ -532,6 +629,112 @@ impl UmapModel {
         self.fit_transform_with_knn_owned_prevalidated(data, n_features, knn_indices, knn_dists)
     }
 
+    pub fn fit_transform_with_knn_metric_dense(
+        &mut self,
+        data: &[f32],
+        n_rows: usize,
+        n_cols: usize,
+        knn_indices: &[Vec<usize>],
+        knn_dists: &[Vec<f32>],
+        knn_metric: Metric,
+    ) -> Result<DenseMatrix, UmapError> {
+        if knn_metric != self.params.metric {
+            return Err(UmapError::InvalidParameter(format!(
+                "precomputed knn metric ({knn_metric:?}) must match model metric ({:?})",
+                self.params.metric
+            )));
+        }
+
+        let data_view = DenseMatrixView::new(data, n_rows, n_cols)?;
+        let (n_samples, n_features) = validate_data(&data_view)?;
+        validate_params(&self.params, n_samples, n_features)?;
+
+        let (embedding, sigmas, rhos) =
+            self.build_dense_fit_artifacts(&data_view, knn_indices, knn_dists)?;
+        let out = dense_matrix_from_output_rows(embedding.clone(), self.params.n_components)?;
+        let training_data = DenseMatrix::from_flat(data, n_rows, n_cols)?;
+        self.store_dense_fit_state(embedding, training_data, n_features, sigmas, rhos);
+        Ok(out)
+    }
+
+    pub fn fit_transform_with_knn_metric_dense_flat(
+        &mut self,
+        data: &[f32],
+        n_rows: usize,
+        n_cols: usize,
+        knn_indices: &[usize],
+        knn_dists: &[f32],
+        knn_cols: usize,
+        knn_metric: Metric,
+    ) -> Result<DenseMatrix, UmapError> {
+        if knn_metric != self.params.metric {
+            return Err(UmapError::InvalidParameter(format!(
+                "precomputed knn metric ({knn_metric:?}) must match model metric ({:?})",
+                self.params.metric
+            )));
+        }
+
+        let data_view = DenseMatrixView::new(data, n_rows, n_cols)?;
+        let knn_index_view = UsizeMatrixView::new(knn_indices, n_rows, knn_cols)?;
+        let knn_dist_view = FlatF32MatrixView::new(knn_dists, n_rows, knn_cols)?;
+        let (n_samples, n_features) = validate_data(&data_view)?;
+        validate_params(&self.params, n_samples, n_features)?;
+
+        let (embedding, sigmas, rhos) =
+            self.build_dense_fit_artifacts(&data_view, &knn_index_view, &knn_dist_view)?;
+        let out = dense_matrix_from_output_rows(embedding.clone(), self.params.n_components)?;
+        let training_data = DenseMatrix::from_flat(data, n_rows, n_cols)?;
+        self.store_dense_fit_state(embedding, training_data, n_features, sigmas, rhos);
+        Ok(out)
+    }
+
+    pub fn fit_transform_with_knn_metric_dense_i64_flat(
+        &mut self,
+        data: &[f32],
+        n_rows: usize,
+        n_cols: usize,
+        knn_indices: &[i64],
+        knn_indices_rows: usize,
+        knn_indices_cols: usize,
+        knn_dists: &[f32],
+        knn_dists_rows: usize,
+        knn_dists_cols: usize,
+        knn_metric: Metric,
+        validate_precomputed: bool,
+    ) -> Result<DenseMatrix, UmapError> {
+        if knn_metric != self.params.metric {
+            return Err(UmapError::InvalidParameter(format!(
+                "precomputed knn metric ({knn_metric:?}) must match model metric ({:?})",
+                self.params.metric
+            )));
+        }
+
+        let data_view = DenseMatrixView::new(data, n_rows, n_cols)?;
+        let (n_samples, n_features) = validate_data(&data_view)?;
+        validate_params(&self.params, n_samples, n_features)?;
+        validate_precomputed_array_shapes(
+            n_samples,
+            knn_indices_rows,
+            knn_indices_cols,
+            knn_dists_rows,
+            knn_dists_cols,
+            self.params.n_neighbors,
+        )?;
+        if validate_precomputed {
+            validate_precomputed_distance_values_flat(knn_dists)?;
+        }
+
+        let knn_idx_rows =
+            precomputed_knn_indices_from_i64_flat(knn_indices, knn_indices_rows, knn_indices_cols)?;
+        let knn_dist_view = FlatF32MatrixView::new(knn_dists, knn_dists_rows, knn_dists_cols)?;
+        let (embedding, sigmas, rhos) =
+            self.build_dense_fit_artifacts(&data_view, &knn_idx_rows, &knn_dist_view)?;
+        let out = dense_matrix_from_output_rows(embedding.clone(), self.params.n_components)?;
+        let training_data = DenseMatrix::from_flat(data, n_rows, n_cols)?;
+        self.store_dense_fit_state(embedding, training_data, n_features, sigmas, rhos);
+        Ok(out)
+    }
+
     fn fit_transform_with_knn_prevalidated(
         &mut self,
         data: &[Vec<f32>],
@@ -590,12 +793,17 @@ impl UmapModel {
         Ok(out)
     }
 
-    fn build_dense_fit_artifacts<M: RowMatrix + ?Sized>(
+    fn build_dense_fit_artifacts<M, I, D>(
         &mut self,
         data: &M,
-        knn_indices: &[Vec<usize>],
-        knn_dists: &[Vec<f32>],
-    ) -> Result<FitArtifacts, UmapError> {
+        knn_indices: &I,
+        knn_dists: &D,
+    ) -> Result<FitArtifacts, UmapError>
+    where
+        M: RowMatrix + ?Sized,
+        I: IndexRowMatrix + ?Sized,
+        D: RowMatrix + ?Sized,
+    {
         let n_samples = data.n_rows();
         let n_epochs = self
             .params
@@ -1034,13 +1242,17 @@ pub fn fit_transform_sparse_csr(
     model.fit_transform_sparse_csr(data)
 }
 
-fn validate_and_trim_precomputed_knn(
-    knn_indices: &[Vec<usize>],
-    knn_dists: &[Vec<f32>],
+fn validate_and_trim_precomputed_knn<I, D>(
+    knn_indices: &I,
+    knn_dists: &D,
     n_samples: usize,
     n_neighbors: usize,
-) -> Result<KnnRows, UmapError> {
-    if knn_indices.len() != n_samples || knn_dists.len() != n_samples {
+) -> Result<KnnRows, UmapError>
+where
+    I: IndexRowMatrix + ?Sized,
+    D: RowMatrix + ?Sized,
+{
+    if knn_indices.n_rows() != n_samples || knn_dists.n_rows() != n_samples {
         return Err(UmapError::InvalidParameter(
             "precomputed knn row count must match number of samples".to_string(),
         ));
@@ -1050,8 +1262,8 @@ fn validate_and_trim_precomputed_knn(
     let mut dist_trimmed = Vec::with_capacity(n_samples);
 
     for row_idx in 0..n_samples {
-        let idx_row = &knn_indices[row_idx];
-        let dist_row = &knn_dists[row_idx];
+        let idx_row = knn_indices.row(row_idx);
+        let dist_row = knn_dists.row(row_idx);
 
         if idx_row.len() < n_neighbors || dist_row.len() < n_neighbors {
             return Err(UmapError::InvalidParameter(
@@ -1101,6 +1313,77 @@ fn validate_and_trim_precomputed_knn(
     }
 
     Ok((idx_trimmed, dist_trimmed))
+}
+
+fn validate_precomputed_array_shapes(
+    data_n_rows: usize,
+    knn_indices_rows: usize,
+    knn_indices_cols: usize,
+    knn_dists_rows: usize,
+    knn_dists_cols: usize,
+    n_neighbors: usize,
+) -> Result<(), UmapError> {
+    if knn_indices_rows != knn_dists_rows || knn_indices_cols != knn_dists_cols {
+        return Err(UmapError::InvalidParameter(
+            "knn_indices and knn_dists must have identical shapes".to_string(),
+        ));
+    }
+    if knn_indices_rows != data_n_rows {
+        return Err(UmapError::InvalidParameter(
+            "knn row count must match data row count".to_string(),
+        ));
+    }
+    if knn_indices_cols < n_neighbors {
+        return Err(UmapError::InvalidParameter(format!(
+            "knn columns must be >= n_neighbors ({n_neighbors})"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_precomputed_distance_values_flat(knn_dists: &[f32]) -> Result<(), UmapError> {
+    for &dist in knn_dists {
+        if !dist.is_finite() {
+            return Err(UmapError::InvalidParameter(
+                "knn_dists must contain only finite values".to_string(),
+            ));
+        }
+        if dist < 0.0 {
+            return Err(UmapError::InvalidParameter(
+                "knn_dists must be non-negative".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn precomputed_knn_indices_from_i64_flat(
+    knn_indices: &[i64],
+    n_rows: usize,
+    n_cols: usize,
+) -> Result<Vec<Vec<usize>>, UmapError> {
+    let expected_len = n_rows.saturating_mul(n_cols);
+    if knn_indices.len() != expected_len {
+        return Err(UmapError::InvalidParameter(format!(
+            "flat knn_indices length mismatch: expected {expected_len}, got {}",
+            knn_indices.len()
+        )));
+    }
+
+    let mut rows = Vec::with_capacity(n_rows);
+    for row in knn_indices.chunks_exact(n_cols) {
+        let mut out_row = Vec::with_capacity(n_cols);
+        for &idx in row {
+            if idx < 0 {
+                return Err(UmapError::InvalidParameter(
+                    "knn indices must be non-negative integers".to_string(),
+                ));
+            }
+            out_row.push(idx as usize);
+        }
+        rows.push(out_row);
+    }
+    Ok(rows)
 }
 
 fn validate_data<M: RowMatrix + ?Sized>(data: &M) -> Result<(usize, usize), UmapError> {
@@ -4516,6 +4799,102 @@ mod tests {
 
         assert_eq!(direct_embedding, precomputed_embedding);
         assert_all_finite(&precomputed_embedding);
+    }
+
+    #[test]
+    fn precomputed_dense_flat_knn_matches_row_path() {
+        let data = synthetic_data(72, 7);
+        let params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 445,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let (knn_indices, knn_dists) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+        let flat_data = data.iter().flatten().copied().collect::<Vec<_>>();
+        let flat_knn_indices = knn_indices.iter().flatten().copied().collect::<Vec<_>>();
+        let flat_knn_dists = knn_dists.iter().flatten().copied().collect::<Vec<_>>();
+
+        let mut row_model = UmapModel::new(params.clone());
+        let row_embedding = row_model
+            .fit_transform_with_knn_metric(&data, &knn_indices, &knn_dists, Metric::Euclidean)
+            .expect("row precomputed fit should succeed");
+
+        let mut flat_model = UmapModel::new(params);
+        let flat_embedding = flat_model
+            .fit_transform_with_knn_metric_dense_flat(
+                &flat_data,
+                data.len(),
+                data[0].len(),
+                &flat_knn_indices,
+                &flat_knn_dists,
+                knn_indices[0].len(),
+                Metric::Euclidean,
+            )
+            .expect("flat precomputed fit should succeed");
+
+        let row_embedding_flat = row_embedding.iter().flatten().copied().collect::<Vec<_>>();
+        assert_eq!(flat_embedding.n_rows(), row_embedding.len());
+        assert_eq!(flat_embedding.n_cols(), row_embedding[0].len());
+        assert_eq!(flat_embedding.as_slice(), row_embedding_flat.as_slice());
+    }
+
+    #[test]
+    fn precomputed_dense_i64_flat_knn_matches_row_path() {
+        let data = synthetic_data(72, 7);
+        let params = UmapParams {
+            n_neighbors: 12,
+            n_components: 2,
+            n_epochs: Some(50),
+            metric: Metric::Euclidean,
+            init: InitMethod::Random,
+            random_seed: 446,
+            use_approximate_knn: false,
+            ..UmapParams::default()
+        };
+
+        let (knn_indices, knn_dists) =
+            exact_nearest_neighbors(&data, params.n_neighbors, Metric::Euclidean);
+        let flat_data = data.iter().flatten().copied().collect::<Vec<_>>();
+        let flat_knn_indices = knn_indices
+            .iter()
+            .flatten()
+            .map(|&idx| idx as i64)
+            .collect::<Vec<_>>();
+        let flat_knn_dists = knn_dists.iter().flatten().copied().collect::<Vec<_>>();
+
+        let mut row_model = UmapModel::new(params.clone());
+        let row_embedding = row_model
+            .fit_transform_with_knn_metric(&data, &knn_indices, &knn_dists, Metric::Euclidean)
+            .expect("row precomputed fit should succeed");
+
+        let mut flat_model = UmapModel::new(params);
+        let flat_embedding = flat_model
+            .fit_transform_with_knn_metric_dense_i64_flat(
+                &flat_data,
+                data.len(),
+                data[0].len(),
+                &flat_knn_indices,
+                knn_indices.len(),
+                knn_indices[0].len(),
+                &flat_knn_dists,
+                knn_dists.len(),
+                knn_dists[0].len(),
+                Metric::Euclidean,
+                true,
+            )
+            .expect("i64 flat precomputed fit should succeed");
+
+        let row_embedding_flat = row_embedding.iter().flatten().copied().collect::<Vec<_>>();
+        assert_eq!(flat_embedding.n_rows(), row_embedding.len());
+        assert_eq!(flat_embedding.n_cols(), row_embedding[0].len());
+        assert_eq!(flat_embedding.as_slice(), row_embedding_flat.as_slice());
     }
 
     #[test]

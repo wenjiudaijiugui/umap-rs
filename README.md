@@ -1,12 +1,23 @@
 # umap-rs
 
-A Rust-first UMAP implementation with reproducible cross-implementation benchmarking against Python `umap-learn` and R `uwot`.
+[中文版本](README_CN.md)
+
+A Rust-first UMAP implementation with fairness-controlled benchmarking against
+Python `umap-learn` and R `uwot`.
+
+The repository includes:
+
+- a Rust library and CLI under `rust_umap/`
+- reproducible benchmark harnesses under `benchmarks/`
+- a thin Python binding under `rust_umap_py/`
 
 ## Repository layout
 
-- `rust_umap/`: Rust UMAP library and CLI binaries.
-- `benchmarks/`: Fair benchmark harness and reports.
-- `UMAP_MATHEMATICAL_DOCUMENTATION*.md`: mathematical notes.
+- `rust_umap/`: Rust UMAP crate and CLI binaries
+- `rust_umap_py/`: PyO3 + maturin Python binding
+- `benchmarks/`: fairness-oriented benchmark scripts and reports
+- `reports/`: generated benchmark and regression artifacts
+- `UMAP_MATHEMATICAL_DOCUMENTATION*.md`: mathematical notes
 
 ## Quick start
 
@@ -16,28 +27,22 @@ cargo build --release
 cargo test
 ```
 
-## Fair benchmark report
+## Python binding
 
-The latest fairness-controlled real-dataset comparison report is available at:
+Version `0.3.0` of the Python binding focuses on IDE discoverability:
 
-- `benchmarks/report_real_fair.md`
-- `benchmarks/report_real_fair.json`
+- public entrypoints ship useful type hints and docstrings
+- editor hover and `help()` now describe the main call patterns
+- the API surface stays intentionally small and layered
 
-## Benchmark dependencies
+The Python binding is still intentionally thin:
 
-The benchmark scripts use:
+- Python normalizes dense arrays and CSR inputs
+- Rust owns validation and compute-heavy paths whenever practical
+- precomputed kNN is available, but it is an advanced interface rather than the
+  default path
 
-- Python: `umap-learn`, `numpy`, `scikit-learn`, `scipy`
-- R: `uwot`, `jsonlite`
-
-See `benchmarks/compare_real_impls_fair.py` for exact execution settings.
-
-## Ecosystem Integration (Python Binding MVP)
-
-This repository now includes a Python binding entrypoint under `rust_umap_py/`
-for cross-ecosystem usage and fair benchmarking against `umap-learn`.
-
-### Build and install binding locally
+### Install locally
 
 ```bash
 PYTHON_BIN="$(command -v python3 || command -v python)"
@@ -45,19 +50,28 @@ if [ -z "$PYTHON_BIN" ]; then
   echo "python3/python not found" >&2
   exit 1
 fi
-if [ ! -d .venv ]; then
-  "$PYTHON_BIN" -m venv .venv
-fi
-. .venv/bin/activate
-python -m pip install --upgrade pip maturin
-maturin develop --manifest-path rust_umap_py/Cargo.toml
+
+uv venv --python "$PYTHON_BIN" .venv
+uv pip install --python .venv/bin/python --upgrade pip maturin
+uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
 ```
 
-### End-to-end call example (library API)
+### API layers
 
-```bash
-PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
-"$PYTHON_BIN" - <<'PY'
+#### Main API
+
+This is the stable public API that most users should learn first.
+
+- `from rust_umap_py import Umap, fit_transform`
+- `Umap.fit(data)`
+- `Umap.fit_transform(data, out=None)`
+- `Umap.transform(query, out=None)`
+- `Umap.inverse_transform(embedded_query, out=None)`
+- `fit_transform(data, **kwargs)`
+
+Typical dense example:
+
+```python
 import numpy as np
 from rust_umap_py import Umap
 
@@ -72,12 +86,122 @@ model = Umap(
     random_seed=42,
     init="random",
 )
+
 emb = model.fit_transform(x)
 print("embedding shape:", emb.shape, "dtype:", emb.dtype)
-PY
 ```
 
-### Ecosystem benchmark (umap-learn vs rust_umap_py)
+The main API also supports:
+
+- CSR sparse input for `fit` and `fit_transform`
+- `out=` buffers for `fit_transform`, `transform`, and `inverse_transform`
+- `ann_mode="auto" | "exact" | "approximate"` as a Python convenience layer
+
+#### Advanced API
+
+`Umap.fit_transform_with_knn(...)` is a public advanced interface.
+
+Use it when you already have an exact or shared kNN graph and want to:
+
+- run fairness-controlled benchmarks
+- reuse the same kNN graph across parameter sweeps
+- integrate with an external nearest-neighbor pipeline
+
+It expects:
+
+- `data`: shape `(n_samples, n_features)`, converted to `float32`
+- `knn_indices`: shape `(n_samples, k)`, converted to `int64`
+- `knn_dists`: shape `(n_samples, k)`, converted to `float32`
+- `knn_metric`: must match the model metric
+
+Example with a shared exact kNN graph:
+
+```python
+import numpy as np
+from sklearn.neighbors import NearestNeighbors
+from rust_umap_py import Umap
+
+x = np.random.default_rng(42).normal(size=(300, 16)).astype(np.float32)
+k = 15
+
+nbrs = NearestNeighbors(
+    n_neighbors=k + 1,
+    algorithm="brute",
+    metric="euclidean",
+    n_jobs=1,
+)
+nbrs.fit(x)
+dists, idx = nbrs.kneighbors(x)
+
+knn_indices = idx[:, 1 : k + 1].astype(np.int64)
+knn_dists = dists[:, 1 : k + 1].astype(np.float32)
+
+model = Umap(
+    n_neighbors=k,
+    n_components=2,
+    metric="euclidean",
+    random_seed=42,
+    init="random",
+    use_approximate_knn=False,
+)
+
+emb = model.fit_transform_with_knn(
+    x,
+    knn_indices,
+    knn_dists,
+    knn_metric="euclidean",
+)
+```
+
+This interface is intentionally narrower than a generic graph API:
+
+- it accepts precomputed kNN, not arbitrary sparse graphs
+- it is useful, but not the recommended quickstart path
+- for strict binding comparisons, treat `algo_exact_shared_knn_exact` as the
+  fairness anchor
+
+#### Internal API
+
+The following are internal implementation details and do not carry a public
+compatibility guarantee:
+
+- `rust_umap_py._rust_umap_py.UmapCore`
+- `rust_umap_py._api`
+- helper functions and `_`-prefixed symbols inside the binding package
+
+## Current scope boundary
+
+The documented and benchmarked Python binding surface currently includes:
+
+- dense single-dataset `Umap` workflows
+- dense-trained `inverse_transform`
+- precomputed kNN fit for dense input as an advanced API
+- CSR sparse `fit` / `fit_transform` MVP
+- dense-query `transform` after sparse training for `euclidean`, `manhattan`,
+  and `cosine`
+
+The current boundary is intentionally narrower than full `umap-learn` parity:
+
+- sparse-trained `inverse_transform` is not supported yet
+- the Python package does not expose parametric UMAP or aligned UMAP
+- ANN quality and performance parity with `pynndescent` is still out of scope
+- the binding does not currently expose a generic graph-input API
+
+See `docs/adr/ADR-L8-scope-alignment.md` for the repo-level scope decision.
+
+## Benchmark reports
+
+The latest fairness-controlled real-dataset report is available at:
+
+- `benchmarks/report_real_fair.md`
+- `benchmarks/report_real_fair.json`
+
+The ecosystem binding comparison report is available at:
+
+- `benchmarks/report_ecosystem_python_binding.md`
+- `benchmarks/report_ecosystem_python_binding.json`
+
+To run the ecosystem comparison locally:
 
 ```bash
 PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
@@ -89,145 +213,33 @@ PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
 ```
 
 Outputs:
+
 - `benchmarks/report_ecosystem_python_binding.json`
 - `benchmarks/report_ecosystem_python_binding.md`
 
-### Current scope boundary
+`e2e_mixed_knn_strategy` is useful for ecosystem smoke. For the strictest
+binding comparison, prefer `algo_exact_shared_knn_exact`.
 
-The repository currently treats the following surface as the documented and benchmarked UMAP core:
-
-- Dense single-dataset `Umap` workflows: `fit`, `fit_transform`, `transform`, and dense-trained `inverse_transform`
-- Precomputed-kNN fit for dense input, with explicit metric alignment
-- Sparse CSR fit MVP in the Rust crate, plus dense-query `transform` after sparse training for `euclidean`, `manhattan`, and `cosine`
-
-The current boundary is intentionally narrower than "full `umap-learn` parity":
-
-- Sparse-trained `inverse_transform` is not supported yet and returns an error
-- The Python binding MVP aligns to the crate's core single-dataset `Umap` workflow only; it does not promise parity for crate-only experimental or auxiliary surfaces such as parametric UMAP, aligned UMAP, CLI binaries, or benchmark helpers
-- ANN quality/performance parity with `pynndescent` is still out of scope
-
-See `docs/adr/ADR-L8-scope-alignment.md` for the repository-level scope decision that this README and `rust_umap/README.md` share.
-
-## CI and Benchmark Gates
-
-The repository CI and benchmark automation currently runs in these workflow stages:
-
-1. `.github/workflows/ci.yml`: `rust-build-test` -> `consistency-smoke` -> `ann-e2e-smoke` -> `wave1-smoke` -> `no-regression-smoke` (metric matrix: euclidean/manhattan/cosine).
-2. `.github/workflows/ecosystem-python-binding.yml`: `binding-smoke-and-benchmark` (binding tests + ecosystem benchmark smoke + machine-readable gate).
-3. `.github/workflows/deep-benchmark-report.yml`: optional manual/scheduled deep reporting via `consistency-smoke` -> `no-regression-smoke` -> `optimization-report`.
-4. `.github/workflows/release-prep-regression.yml`: path-triggered project-level convergence run via `benchmarks/release_prep_regression.py` with a baseline worktree.
-
-Latest project-level convergence snapshot:
-
-- `reports/final-convergence-latest.json`
-- `reports/final-convergence-latest.md`
-
-## Local Validation Commands
+## Local validation
 
 ```bash
-# Run from repository root.
-for cmd in cargo git; do
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "$cmd not found" >&2
-    exit 1
-  fi
-done
-
 PYTHON_BIN="$(command -v python3 || command -v python)"
-if [ -z "$PYTHON_BIN" ]; then
-  echo "python3/python not found" >&2
-  exit 1
-fi
 
 cargo test --manifest-path rust_umap/Cargo.toml
 
-$PYTHON_BIN -m pip install --upgrade pip
-$PYTHON_BIN -m pip install -r benchmarks/requirements-bench.txt pytest maturin
+uv venv --python "$PYTHON_BIN" .venv
+uv pip install --python .venv/bin/python --upgrade pip
+uv pip install --python .venv/bin/python -r benchmarks/requirements-bench.txt pytest maturin
 
-$PYTHON_BIN -m py_compile \
+uv run --python .venv/bin/python python -m py_compile \
   benchmarks/compare_real_impls_fair.py \
   benchmarks/compare_ecosystem_python_binding.py \
-  benchmarks/ci_consistency_smoke.py \
-  benchmarks/ci_no_regression.py \
-  benchmarks/ci_wave1_smoke.py \
   benchmarks/run_rust_umap_py.py \
   benchmarks/run_rust_umap_py_algo.py
 
-if command -v Rscript >/dev/null 2>&1; then
-  Rscript benchmarks/install_r_bench_deps.R
-  $PYTHON_BIN benchmarks/ci_consistency_smoke.py \
-    --python-bin "$PYTHON_BIN" \
-    --rscript-bin Rscript \
-    --require-r
-else
-  $PYTHON_BIN benchmarks/ci_consistency_smoke.py \
-    --python-bin "$PYTHON_BIN" \
-    --rscript-bin ""
-fi
-
-# Build/install local binding before running binding tests.
-. .venv/bin/activate 2>/dev/null || {
-  "$PYTHON_BIN" -m venv .venv
-  . .venv/bin/activate
-}
-python -m pip install --upgrade pip maturin
-maturin develop --manifest-path rust_umap_py/Cargo.toml
-
-# candidate-root and baseline-root must point to different trees.
-CANDIDATE_ROOT="$(pwd -P)"
-BASE_REF="$(git rev-parse HEAD~1)"
-git worktree add ../umap-rs-baseline "$BASE_REF"
-BASELINE_ROOT="$(cd ../umap-rs-baseline && pwd -P)"
-if [ "$CANDIDATE_ROOT" = "$BASELINE_ROOT" ]; then
-  echo "candidate-root and baseline-root must be different directories" >&2
-  exit 1
-fi
-
-for METRIC in euclidean manhattan cosine; do
-  $PYTHON_BIN benchmarks/ci_no_regression.py \
-    --candidate-root "$CANDIDATE_ROOT" \
-    --baseline-root "$BASELINE_ROOT" \
-    --metric "$METRIC"
-done
-git worktree remove ../umap-rs-baseline
-
-$PYTHON_BIN benchmarks/ci_wave1_smoke.py \
-  --manifest-path rust_umap/Cargo.toml \
-  --output-json wave1-smoke.local.json
-
-$PYTHON_BIN -m pytest -q rust_umap_py/tests/test_binding.py
+uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
+uv run --python .venv/bin/python python -I -m pytest -q rust_umap_py/tests/test_binding.py
 ```
 
-## Wave 3 Release-Prep
-
-Wave 3 convergence now has a single local orchestrator for release-prep regression:
-
-```bash
-PYTHON_BIN="$(command -v python3 || command -v python)"
-CANDIDATE_ROOT="$(pwd -P)"
-BASE_REF="$(git rev-parse HEAD~1)"
-git worktree add ../umap-rs-baseline "$BASE_REF"
-BASELINE_ROOT="$(cd ../umap-rs-baseline && pwd -P)"
-
-$PYTHON_BIN benchmarks/release_prep_regression.py \
-  --candidate-root "$CANDIDATE_ROOT" \
-  --baseline-root "$BASELINE_ROOT" \
-  --gate-config benchmarks/gate_thresholds.json \
-  --metrics euclidean,manhattan,cosine \
-  --output-json benchmarks/release-prep-regression.local.json
-
-git worktree remove ../umap-rs-baseline
-```
-
-What it runs:
-1. `wave1-smoke`
-2. `ann-e2e-smoke`
-3. `consistency-smoke`
-4. `no-regression-smoke` for each requested metric
-
-Notes:
-1. `benchmarks/gate_thresholds.json` is the frozen Wave 3 gate threshold source; `--gate-config` can override it explicitly.
-2. `--require-r` forces the consistency gate to require `Rscript`.
-3. The summary JSON records per-gate commands, artifacts, exit status, and captured output tails.
-4. Gate reports include `schema_version=1`; release-prep summaries also include `schema_version=1`.
-5. Release-prep reuses prebuilt candidate/baseline binaries across sub-gates and stores repo-relative artifact paths when possible.
+For the full local regression and release-prep workflow, see the benchmark
+scripts under `benchmarks/` and the generated reports under `reports/`.

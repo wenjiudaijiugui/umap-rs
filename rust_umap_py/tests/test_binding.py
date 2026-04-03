@@ -1,3 +1,6 @@
+import inspect
+from importlib import resources
+
 import numpy as np
 
 # Ensure we import the installed package, not the repo's top-level
@@ -11,7 +14,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path = [p for p in sys.path if Path(p or ".").resolve() != _REPO_ROOT]
 
 from rust_umap_py import Umap
+from rust_umap_py import __version__
+from rust_umap_py import fit_transform
 import rust_umap_py._api as api
+from rust_umap_py._rust_umap_py import UmapCore
 
 
 def make_dataset(n_samples: int = 180, n_features: int = 12, seed: int = 42) -> np.ndarray:
@@ -29,6 +35,57 @@ def make_dataset(n_samples: int = 180, n_features: int = 12, seed: int = 42) -> 
     x -= x.mean(axis=0, keepdims=True)
     x /= x.std(axis=0, keepdims=True) + 1e-6
     return x.astype(np.float32)
+
+
+def _skip_until_python_package_03() -> None:
+    if not __version__.startswith("0.3."):
+        pytest.skip("0.3.0 docstring/type assets are not shipped yet")
+
+
+def test_public_api_has_helpful_docstrings() -> None:
+    _skip_until_python_package_03()
+
+    docs = {
+        "Umap": inspect.getdoc(Umap) or "",
+        "Umap.__init__": inspect.getdoc(Umap.__init__) or "",
+        "Umap.fit": inspect.getdoc(Umap.fit) or "",
+        "Umap.fit_transform": inspect.getdoc(Umap.fit_transform) or "",
+        "Umap.fit_transform_with_knn": inspect.getdoc(Umap.fit_transform_with_knn) or "",
+        "Umap.transform": inspect.getdoc(Umap.transform) or "",
+        "Umap.inverse_transform": inspect.getdoc(Umap.inverse_transform) or "",
+        "fit_transform": inspect.getdoc(fit_transform) or "",
+    }
+
+    for name, doc in docs.items():
+        assert doc.strip(), f"{name} docstring is empty"
+
+    assert "shape" in docs["Umap.fit_transform"].lower()
+    assert "dtype" in docs["Umap.fit_transform"].lower()
+    assert "out" in docs["Umap.fit_transform"].lower()
+    assert "advanced" in docs["Umap.fit_transform_with_knn"].lower()
+    assert "knn" in docs["Umap.fit_transform_with_knn"].lower()
+    assert "precomputed" in docs["Umap.fit_transform_with_knn"].lower()
+    assert "out" in docs["Umap.transform"].lower()
+    assert "out" in docs["Umap.inverse_transform"].lower()
+
+
+def test_top_level_fit_transform_signature_is_inspectable() -> None:
+    signature = inspect.signature(fit_transform)
+
+    assert "data" in signature.parameters
+    assert "kwargs" in signature.parameters
+    assert signature.parameters["kwargs"].kind is inspect.Parameter.VAR_KEYWORD
+
+
+def test_package_ships_typing_markers_and_stubs() -> None:
+    _skip_until_python_package_03()
+
+    package_root = resources.files("rust_umap_py")
+    expected_files = ("py.typed", "__init__.pyi", "_api.pyi")
+
+    for filename in expected_files:
+        resource = package_root / filename
+        assert resource.is_file(), f"missing package resource: {filename}"
 
 
 def test_fit_transform_out_buffer_and_inverse_roundtrip() -> None:
@@ -190,6 +247,37 @@ def test_precomputed_knn_path_consistency() -> None:
     assert abs(trust_direct - trust_knn) < 0.05
 
 
+def test_umap_core_precomputed_accepts_noncontiguous_knn_buffers() -> None:
+    x = make_dataset(n_samples=64, n_features=6, seed=35)
+    k = 8
+
+    knn_idx_base = np.full((x.shape[0], k * 2), -1, dtype=np.int64)
+    knn_idx_base[:, ::2] = np.tile(np.arange(k, dtype=np.int64), (x.shape[0], 1))
+    knn_idx = knn_idx_base[:, ::2]
+
+    knn_dist_base = np.empty((x.shape[0], k * 2), dtype=np.float32)
+    knn_dist_base[:, ::2] = np.tile(np.arange(k, dtype=np.float32), (x.shape[0], 1))
+    knn_dist = knn_dist_base[:, ::2]
+
+    assert not knn_idx.flags.c_contiguous
+    assert not knn_dist.flags.c_contiguous
+
+    core = UmapCore(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=20,
+        metric="euclidean",
+        init="random",
+        random_seed=39,
+        use_approximate_knn=False,
+    )
+    emb = core.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")
+
+    assert emb.shape == (x.shape[0], 2)
+    assert emb.dtype == np.float32
+    assert np.all(np.isfinite(emb))
+
+
 def test_precomputed_knn_rejects_non_finite_distances_early() -> None:
     x = make_dataset(n_samples=48, n_features=6, seed=31)
     k = 8
@@ -303,6 +391,72 @@ def test_fit_transform_rejects_invalid_out_buffers() -> None:
         model.fit_transform(x, out=readonly)
 
 
+def test_transform_and_inverse_transform_require_fit() -> None:
+    model = Umap(
+        n_neighbors=10,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=33,
+        use_approximate_knn=False,
+    )
+    query = np.zeros((8, 6), dtype=np.float32)
+    embedded = np.zeros((8, 2), dtype=np.float32)
+
+    with pytest.raises(RuntimeError, match="model is not fitted yet"):
+        model.transform(query)
+
+    with pytest.raises(RuntimeError, match="model is not fitted yet"):
+        model.inverse_transform(embedded)
+
+    out = np.empty((8, 6), dtype=np.float32)
+    with pytest.raises(RuntimeError, match="model must be fit before inverse_transform\\(out=\\.\\.\\.\\)"):
+        model.inverse_transform(embedded, out=out)
+
+
+def test_transform_and_inverse_transform_reject_invalid_out_buffers() -> None:
+    x = make_dataset(n_samples=96, n_features=8, seed=18)
+    model = Umap(
+        n_neighbors=10,
+        n_components=2,
+        n_epochs=40,
+        metric="euclidean",
+        init="random",
+        random_seed=37,
+        use_approximate_knn=False,
+    )
+    model.fit(x)
+
+    query = x[:12]
+    embedded = model.transform(query)
+
+    with pytest.raises(TypeError, match="out dtype must be float32"):
+        bad_dtype = np.empty((query.shape[0], 2), dtype=np.float64)
+        model.transform(query, out=bad_dtype)
+
+    with pytest.raises(ValueError, match="out must be C-contiguous"):
+        bad_order = np.empty((query.shape[0], 2), dtype=np.float32, order="F")
+        model.transform(query, out=bad_order)
+
+    with pytest.raises(ValueError, match="out must be writeable"):
+        readonly = np.empty((query.shape[0], 2), dtype=np.float32)
+        readonly.setflags(write=False)
+        model.transform(query, out=readonly)
+
+    with pytest.raises(TypeError, match="out dtype must be float32"):
+        bad_dtype = np.empty((query.shape[0], x.shape[1]), dtype=np.float64)
+        model.inverse_transform(embedded, out=bad_dtype)
+
+    with pytest.raises(ValueError, match="out must be C-contiguous"):
+        bad_order = np.empty((query.shape[0], x.shape[1]), dtype=np.float32, order="F")
+        model.inverse_transform(embedded, out=bad_order)
+
+    with pytest.raises(ValueError, match="out must be writeable"):
+        readonly = np.empty((query.shape[0], x.shape[1]), dtype=np.float32)
+        readonly.setflags(write=False)
+        model.inverse_transform(embedded, out=readonly)
+
+
 def test_zero_column_data_is_rejected_with_value_error() -> None:
     x = np.empty((16, 0), dtype=np.float32)
     model = Umap(
@@ -337,6 +491,145 @@ def test_zero_column_precomputed_knn_is_rejected_with_value_error() -> None:
 
     with pytest.raises(ValueError, match="knn columns must be >= n_neighbors"):
         model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")
+
+
+def test_precomputed_knn_rejects_row_count_mismatch_early() -> None:
+    x = make_dataset(n_samples=40, n_features=6, seed=43)
+    k = 8
+    knn_idx = np.tile(np.arange(k, dtype=np.int64), (x.shape[0] - 1, 1))
+    knn_dist = np.ones((x.shape[0] - 1, k), dtype=np.float32)
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=41,
+        use_approximate_knn=False,
+    )
+
+    with pytest.raises(ValueError, match="knn row count must match data row count"):
+        model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")
+
+
+def test_precomputed_knn_rejects_negative_distances_early() -> None:
+    x = make_dataset(n_samples=48, n_features=6, seed=45)
+    k = 8
+    knn_idx = np.tile(np.arange(k, dtype=np.int64), (x.shape[0], 1))
+    knn_dist = np.ones((x.shape[0], k), dtype=np.float32)
+    knn_dist[0, 0] = -0.1
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=43,
+        use_approximate_knn=False,
+    )
+
+    with pytest.raises(ValueError, match="knn_dists must be non-negative"):
+        model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")
+
+
+def test_precomputed_knn_disable_validation_still_rejects_invalid_distances_in_core() -> None:
+    x = make_dataset(n_samples=48, n_features=6, seed=47)
+    k = 8
+    knn_idx = np.tile(np.arange(k, dtype=np.int64), (x.shape[0], 1))
+    knn_dist = np.ones((x.shape[0], k), dtype=np.float32)
+    knn_dist[0, 0] = -0.1
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=47,
+        use_approximate_knn=False,
+    )
+
+    with pytest.raises(ValueError, match="precomputed knn distance must be finite and >= 0"):
+        model.fit_transform_with_knn(
+            x,
+            knn_idx,
+            knn_dist,
+            knn_metric="euclidean",
+            validate_precomputed=False,
+        )
+
+
+def test_precomputed_knn_out_buffer_and_metric_variant_work() -> None:
+    nearest_neighbors = pytest.importorskip("sklearn.neighbors")
+    NearestNeighbors = nearest_neighbors.NearestNeighbors
+
+    x = make_dataset(n_samples=120, n_features=8, seed=49)
+    k = 10
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="brute", metric="manhattan", n_jobs=1)
+    nbrs.fit(x)
+    dists, idx = nbrs.kneighbors(x)
+    knn_idx = idx[:, 1 : k + 1].astype(np.int64)
+    knn_dist = dists[:, 1 : k + 1].astype(np.float32)
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=50,
+        metric="manhattan",
+        init="random",
+        random_seed=53,
+        use_approximate_knn=False,
+    )
+    out = np.empty((x.shape[0], 2), dtype=np.float32)
+    emb = model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="manhattan", out=out)
+
+    assert emb is out
+    assert emb.shape == (x.shape[0], 2)
+    assert np.all(np.isfinite(emb))
+
+
+def test_precomputed_knn_non_contiguous_arrays_fallback_to_dense_row_path() -> None:
+    nearest_neighbors = pytest.importorskip("sklearn.neighbors")
+    NearestNeighbors = nearest_neighbors.NearestNeighbors
+
+    x = make_dataset(n_samples=96, n_features=8, seed=50)
+    k = 10
+    nbrs = NearestNeighbors(n_neighbors=k + 1, algorithm="brute", metric="euclidean", n_jobs=1)
+    nbrs.fit(x)
+    dists, idx = nbrs.kneighbors(x)
+    knn_idx = np.asfortranarray(idx[:, 1 : k + 1].astype(np.int64))
+    knn_dist = np.asfortranarray(dists[:, 1 : k + 1].astype(np.float32))
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=40,
+        init="random",
+        random_seed=57,
+        use_approximate_knn=False,
+    )
+    emb = model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="euclidean")
+
+    assert emb.shape == (x.shape[0], 2)
+    assert np.all(np.isfinite(emb))
+
+
+def test_precomputed_knn_rejects_invalid_metric() -> None:
+    x = make_dataset(n_samples=40, n_features=6, seed=51)
+    k = 8
+    knn_idx = np.tile(np.arange(k, dtype=np.int64), (x.shape[0], 1))
+    knn_dist = np.ones((x.shape[0], k), dtype=np.float32)
+
+    model = Umap(
+        n_neighbors=k,
+        n_components=2,
+        n_epochs=20,
+        init="random",
+        random_seed=59,
+        use_approximate_knn=False,
+    )
+
+    with pytest.raises(ValueError, match="unsupported metric 'chebyshev'"):
+        model.fit_transform_with_knn(x, knn_idx, knn_dist, knn_metric="chebyshev")
 
 
 def test_sparse_csr_fit_transform_and_dense_transform_out_buffer() -> None:
@@ -390,3 +683,44 @@ def test_sparse_csr_fit_tracks_feature_count_for_inverse_out_error() -> None:
     with pytest.raises(ValueError, match="output buffer shape mismatch"):
         bad_out = np.empty((5, x.shape[1] + 1), dtype=np.float32)
         model.inverse_transform(np.zeros((5, 2), dtype=np.float32), out=bad_out)
+
+
+def test_sparse_trained_inverse_transform_is_explicitly_unsupported() -> None:
+    scipy_sparse = pytest.importorskip("scipy.sparse")
+
+    x = make_dataset(n_samples=64, n_features=9, seed=73)
+    x[x < 0.2] = 0.0
+    x_csr = scipy_sparse.csr_matrix(x)
+
+    model = Umap(
+        n_neighbors=6,
+        n_components=2,
+        n_epochs=40,
+        metric="manhattan",
+        init="random",
+        random_seed=61,
+        use_approximate_knn=False,
+    )
+    model.fit(x_csr)
+
+    with pytest.raises(ValueError, match="inverse_transform is not supported for sparse-trained models yet"):
+        model.inverse_transform(np.zeros((5, 2), dtype=np.float32))
+
+
+def test_binding_getters_track_feature_count_after_fit() -> None:
+    x = make_dataset(n_samples=72, n_features=7, seed=79)
+    model = Umap(
+        n_neighbors=9,
+        n_components=2,
+        n_epochs=30,
+        init="random",
+        random_seed=67,
+        use_approximate_knn=False,
+    )
+
+    assert model.n_neighbors == 9
+    assert model.n_components == 2
+    assert model._core.n_features is None
+
+    model.fit(x)
+    assert model._core.n_features == x.shape[1]

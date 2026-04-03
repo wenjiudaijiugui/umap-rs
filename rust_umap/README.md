@@ -54,6 +54,10 @@ The following remain intentionally outside the current boundary:
 - Python binding parity for crate-only experimental or auxiliary surfaces such as parametric UMAP, aligned UMAP, CLI binaries, or benchmark helpers
 - Full ANN parity with Python `umap-learn` + `pynndescent`
 
+The repository-level Python binding is intentionally kept thin over these Rust
+paths: Python normalizes I/O and forwards calls, while validation and compute
+stay in Rust wherever practical.
+
 See `../docs/adr/ADR-L8-scope-alignment.md` for the L8 alignment record.
 
 ## Quick start
