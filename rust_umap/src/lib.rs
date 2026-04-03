@@ -657,6 +657,7 @@ impl UmapModel {
         Ok(out)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fit_transform_with_knn_metric_dense_flat(
         &mut self,
         data: &[f32],
@@ -688,6 +689,7 @@ impl UmapModel {
         Ok(out)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn fit_transform_with_knn_metric_dense_i64_flat(
         &mut self,
         data: &[f32],
