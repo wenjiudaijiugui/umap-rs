@@ -183,6 +183,8 @@ jobs:
           path: dist
 
       - name: Install smoke test from sdist on Python 3.14
+        id: py314_probe
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -215,6 +217,20 @@ jobs:
           assert "kwargs" in inspect.signature(fit_transform).parameters
           assert hasattr(model, "fit_transform_with_knn")
           PY
+
+      - name: Summarize Python 3.14 probe
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "### Python 3.14 probe"
+            if [[ "${{ steps.py314_probe.outcome }}" == "success" ]]; then
+              echo "- sdist install and smoke test passed on Python 3.14."
+            else
+              echo "- sdist install or smoke test failed on Python 3.14."
+              echo "- Current blocker: PyO3 0.22.6 supports up to Python 3.13."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   publish-pypi:
     name: publish-pypi
