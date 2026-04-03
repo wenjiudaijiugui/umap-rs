@@ -1,0 +1,14 @@
+/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/deps/pyo3_build_config-58b3c73e8f846465.d: /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/lib.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/errors.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/impl_.rs /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config-file.txt /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config.txt
+
+/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/deps/libpyo3_build_config-58b3c73e8f846465.rlib: /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/lib.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/errors.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/impl_.rs /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config-file.txt /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config.txt
+
+/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/deps/libpyo3_build_config-58b3c73e8f846465.rmeta: /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/lib.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/errors.rs /home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/impl_.rs /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config-file.txt /home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config.txt
+
+/home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/lib.rs:
+/home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/errors.rs:
+/home/shenshang/.cargo/registry/src/rsproxy.cn-e3de039b2554c837/pyo3-build-config-0.22.6/src/impl_.rs:
+/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config-file.txt:
+/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out/pyo3-build-config.txt:
+
+# env-dep:CARGO_PKG_VERSION=0.22.6
+# env-dep:OUT_DIR=/home/shenshang/paper_reproduction/umap-rs/umap_rs/target/release/build/pyo3-build-config-1df12622287dd13e/out

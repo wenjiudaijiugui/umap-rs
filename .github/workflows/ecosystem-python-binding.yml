@@ -4,18 +4,18 @@ on:
   pull_request:
     paths:
       - 'rust_umap/**'
-      - 'rust_umap_py/**'
+      - 'umap_rs/**'
       - 'benchmarks/*ecosystem*'
-      - 'benchmarks/run_rust_umap_py*.py'
+      - 'benchmarks/run_umap_rs*.py'
       - '.github/workflows/ecosystem-python-binding.yml'
   push:
     branches:
       - main
     paths:
       - 'rust_umap/**'
-      - 'rust_umap_py/**'
+      - 'umap_rs/**'
       - 'benchmarks/*ecosystem*'
-      - 'benchmarks/run_rust_umap_py*.py'
+      - 'benchmarks/run_umap_rs*.py'
       - '.github/workflows/ecosystem-python-binding.yml'
   workflow_dispatch:
 
@@ -38,12 +38,12 @@ jobs:
           . .venv/bin/activate
           python -m pip install --upgrade pip
           python -m pip install maturin pytest -r benchmarks/requirements-bench.txt
-      - name: Build and install rust_umap_py
+      - name: Build and install umap_rs
         run: |
-          maturin develop --manifest-path rust_umap_py/Cargo.toml
-      - name: Run rust_umap_py tests
+          maturin develop --manifest-path umap_rs/Cargo.toml
+      - name: Run umap_rs tests
         run: |
-          python -I -m pytest -q rust_umap_py/tests/test_binding.py
+          python -I -m pytest -q umap_rs/tests/test_binding.py
       - name: Run ecosystem benchmark smoke
         run: |
           python benchmarks/compare_ecosystem_python_binding.py \

@@ -11,7 +11,7 @@ GROUP_E2E_MIXED = "e2e_mixed_knn_strategy"
 GROUP_ALGO_EXACT = "algo_exact_shared_knn_exact"
 LEGACY_GROUP_E2E = "e2e_default_ann"
 LEGACY_GROUP_ALGO = "algo_exact_shared_knn"
-PAIRWISE_KEY = "python_umap_learn__vs__rust_umap_py"
+PAIRWISE_KEY = "python_umap_learn__vs__umap_rs"
 
 
 def parse_args() -> argparse.Namespace:
@@ -94,7 +94,7 @@ def main() -> None:
         consistency = dataset_payload["consistency"]
 
         py_fit = fit["python_umap_learn"]
-        rust_fit = fit["rust_umap_py"]
+        rust_fit = fit["umap_rs"]
 
         py_time = _as_float(py_fit["fit_mean_sec"], f"{dataset_name}.python.fit_mean_sec")
         rust_time = _as_float(rust_fit["fit_mean_sec"], f"{dataset_name}.rust.fit_mean_sec")
@@ -106,7 +106,7 @@ def main() -> None:
             f"{dataset_name}.trust.python",
         )
         trust_rust = _as_float(
-            consistency["trustworthiness_at_15"]["rust_umap_py"],
+            consistency["trustworthiness_at_15"]["umap_rs"],
             f"{dataset_name}.trust.rust",
         )
         recall_py = _as_float(
@@ -114,7 +114,7 @@ def main() -> None:
             f"{dataset_name}.recall.python",
         )
         recall_rust = _as_float(
-            consistency["original_knn_recall_at_15"]["rust_umap_py"],
+            consistency["original_knn_recall_at_15"]["umap_rs"],
             f"{dataset_name}.recall.rust",
         )
         overlap = _as_float(

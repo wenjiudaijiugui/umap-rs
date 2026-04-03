@@ -9,7 +9,7 @@ for user-facing milestones.
 
 ### Highlights
 
-- Shipped typed Python package assets for `rust_umap_py`, including
+- Shipped typed Python package assets for `umap_rs`, including
   `__init__.pyi`, `_api.pyi`, and `py.typed`, plus `UmapKwargs`, richer
   docstrings, hover text, and manual smoke examples for the public API.
 - Documented the Python API in layers: dense `Umap` and one-shot

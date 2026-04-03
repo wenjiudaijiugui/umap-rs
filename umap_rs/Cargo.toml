@@ -1,0 +1,21 @@
+[package]
+name = "umap_rs"
+version = "0.3.0"
+edition = "2021"
+description = "PyO3-based Python bindings for rust_umap with typed public stubs"
+license = "BSD-3-Clause"
+readme = "README.md"
+repository = "https://github.com/wenjiudaijiugui/umap-rs"
+homepage = "https://github.com/wenjiudaijiugui/umap-rs"
+documentation = "https://github.com/wenjiudaijiugui/umap-rs/tree/main/umap_rs"
+keywords = ["umap", "python", "pyo3", "dimensionality-reduction"]
+categories = ["api-bindings", "science"]
+
+[lib]
+name = "umap_rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+rust_umap = { path = "../rust_umap" }
+pyo3 = { version = "0.22", features = ["extension-module"] }
+numpy = "0.22"

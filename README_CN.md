@@ -9,12 +9,12 @@
 
 - `rust_umap/` 下的 Rust 库与 CLI
 - `benchmarks/` 下的可复现 benchmark 框架
-- `rust_umap_py/` 下的轻量 Python 绑定
+- `umap_rs/` 下的轻量 Python 绑定
 
 ## 仓库结构
 
 - `rust_umap/`: Rust UMAP crate 与 CLI 二进制
-- `rust_umap_py/`: 基于 PyO3 + maturin 的 Python 绑定
+- `umap_rs/`: 基于 PyO3 + maturin 的 Python 绑定
 - `benchmarks/`: 面向公平比较的 benchmark 脚本与报告
 - `reports/`: 生成的 benchmark 与回归产物
 - `UMAP_MATHEMATICAL_DOCUMENTATION*.md`: 数学说明文档
@@ -46,7 +46,7 @@ fi
 
 uv venv --python "$PYTHON_BIN" .venv
 uv pip install --python .venv/bin/python --upgrade pip maturin
-uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
+uv run --python .venv/bin/python maturin develop --manifest-path umap_rs/Cargo.toml
 ```
 
 ### API 分层
@@ -55,7 +55,7 @@ uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Ca
 
 这是稳定的公开 API，也是大多数用户应该优先学习的接口层。
 
-- `from rust_umap_py import Umap, fit_transform`
+- `from umap_rs import Umap, fit_transform`
 - `Umap.fit(data)`
 - `Umap.fit_transform(data, out=None)`
 - `Umap.transform(query, out=None)`
@@ -66,7 +66,7 @@ uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Ca
 
 ```python
 import numpy as np
-from rust_umap_py import Umap
+from umap_rs import Umap
 
 rng = np.random.default_rng(42)
 x = rng.normal(size=(400, 16)).astype(np.float32)
@@ -112,7 +112,7 @@ Main API 还支持：
 ```python
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from rust_umap_py import Umap
+from umap_rs import Umap
 
 x = np.random.default_rng(42).normal(size=(300, 16)).astype(np.float32)
 k = 15
@@ -156,8 +156,8 @@ emb = model.fit_transform_with_knn(
 
 下面这些属于内部实现细节，不承诺公开兼容性：
 
-- `rust_umap_py._rust_umap_py.UmapCore`
-- `rust_umap_py._api`
+- `umap_rs._umap_rs.UmapCore`
+- `umap_rs._api`
 - 绑定包内部的 helper 和所有 `_` 前缀符号
 
 ## 当前范围边界
@@ -225,11 +225,11 @@ uv pip install --python .venv/bin/python -r benchmarks/requirements-bench.txt py
 uv run --python .venv/bin/python python -m py_compile \
   benchmarks/compare_real_impls_fair.py \
   benchmarks/compare_ecosystem_python_binding.py \
-  benchmarks/run_rust_umap_py.py \
-  benchmarks/run_rust_umap_py_algo.py
+  benchmarks/run_umap_rs.py \
+  benchmarks/run_umap_rs_algo.py
 
-uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
-uv run --python .venv/bin/python python -I -m pytest -q rust_umap_py/tests/test_binding.py
+uv run --python .venv/bin/python maturin develop --manifest-path umap_rs/Cargo.toml
+uv run --python .venv/bin/python python -I -m pytest -q umap_rs/tests/test_binding.py
 ```
 
 如果要运行完整的本地回归与 release-prep 流程，请继续查看 `benchmarks/`

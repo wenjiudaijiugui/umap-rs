@@ -9,12 +9,12 @@ The repository includes:
 
 - a Rust library and CLI under `rust_umap/`
 - reproducible benchmark harnesses under `benchmarks/`
-- a thin Python binding under `rust_umap_py/`
+- a thin Python binding under `umap_rs/`
 
 ## Repository layout
 
 - `rust_umap/`: Rust UMAP crate and CLI binaries
-- `rust_umap_py/`: PyO3 + maturin Python binding
+- `umap_rs/`: PyO3 + maturin Python binding
 - `benchmarks/`: fairness-oriented benchmark scripts and reports
 - `reports/`: generated benchmark and regression artifacts
 - `UMAP_MATHEMATICAL_DOCUMENTATION*.md`: mathematical notes
@@ -53,7 +53,7 @@ fi
 
 uv venv --python "$PYTHON_BIN" .venv
 uv pip install --python .venv/bin/python --upgrade pip maturin
-uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
+uv run --python .venv/bin/python maturin develop --manifest-path umap_rs/Cargo.toml
 ```
 
 ### API layers
@@ -62,7 +62,7 @@ uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Ca
 
 This is the stable public API that most users should learn first.
 
-- `from rust_umap_py import Umap, fit_transform`
+- `from umap_rs import Umap, fit_transform`
 - `Umap.fit(data)`
 - `Umap.fit_transform(data, out=None)`
 - `Umap.transform(query, out=None)`
@@ -73,7 +73,7 @@ Typical dense example:
 
 ```python
 import numpy as np
-from rust_umap_py import Umap
+from umap_rs import Umap
 
 rng = np.random.default_rng(42)
 x = rng.normal(size=(400, 16)).astype(np.float32)
@@ -119,7 +119,7 @@ Example with a shared exact kNN graph:
 ```python
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
-from rust_umap_py import Umap
+from umap_rs import Umap
 
 x = np.random.default_rng(42).normal(size=(300, 16)).astype(np.float32)
 k = 15
@@ -165,8 +165,8 @@ This interface is intentionally narrower than a generic graph API:
 The following are internal implementation details and do not carry a public
 compatibility guarantee:
 
-- `rust_umap_py._rust_umap_py.UmapCore`
-- `rust_umap_py._api`
+- `umap_rs._umap_rs.UmapCore`
+- `umap_rs._api`
 - helper functions and `_`-prefixed symbols inside the binding package
 
 ## Current scope boundary
@@ -234,11 +234,11 @@ uv pip install --python .venv/bin/python -r benchmarks/requirements-bench.txt py
 uv run --python .venv/bin/python python -m py_compile \
   benchmarks/compare_real_impls_fair.py \
   benchmarks/compare_ecosystem_python_binding.py \
-  benchmarks/run_rust_umap_py.py \
-  benchmarks/run_rust_umap_py_algo.py
+  benchmarks/run_umap_rs.py \
+  benchmarks/run_umap_rs_algo.py
 
-uv run --python .venv/bin/python maturin develop --manifest-path rust_umap_py/Cargo.toml
-uv run --python .venv/bin/python python -I -m pytest -q rust_umap_py/tests/test_binding.py
+uv run --python .venv/bin/python maturin develop --manifest-path umap_rs/Cargo.toml
+uv run --python .venv/bin/python python -I -m pytest -q umap_rs/tests/test_binding.py
 ```
 
 For the full local regression and release-prep workflow, see the benchmark

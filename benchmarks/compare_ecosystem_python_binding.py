@@ -37,10 +37,10 @@ GROUP_ALGO_EXACT = "algo_exact_shared_knn_exact"
 
 RUN_PY_E2E = BENCH_DIR / "run_python_umap.py"
 RUN_PY_ALGO = BENCH_DIR / "run_python_umap_algo.py"
-RUN_RUST_PY_E2E = BENCH_DIR / "run_rust_umap_py.py"
-RUN_RUST_PY_ALGO = BENCH_DIR / "run_rust_umap_py_algo.py"
+RUN_RUST_PY_E2E = BENCH_DIR / "run_umap_rs.py"
+RUN_RUST_PY_ALGO = BENCH_DIR / "run_umap_rs_algo.py"
 
-IMPLS = ["python_umap_learn", "rust_umap_py"]
+IMPLS = ["python_umap_learn", "umap_rs"]
 
 N_NEIGHBORS = 15
 N_COMPONENTS = 2
@@ -81,7 +81,7 @@ class TimedRun:
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Benchmark rust_umap_py vs python umap-learn with fair settings")
+    p = argparse.ArgumentParser(description="Benchmark umap_rs vs python umap-learn with fair settings")
     p.add_argument("--python-bin", default=sys.executable)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--warmup", type=int, default=1)
@@ -93,7 +93,7 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help=(
             "append a large enough california_housing slice when needed so the mixed e2e group "
-            "covers rust_umap_py approximate ANN at least once"
+            "covers umap_rs approximate ANN at least once"
         ),
     )
     p.add_argument("--large-max-samples", type=int, default=15000)
@@ -392,7 +392,7 @@ def compute_consistency(
     }
 
     py_name = "python_umap_learn"
-    rust_name = "rust_umap_py"
+    rust_name = "umap_rs"
     _, _, disparity = procrustes(emb_s[py_name], emb_s[rust_name])
     overlap = knn_overlap(emb_s[py_name], emb_s[rust_name], k)
 
@@ -432,7 +432,7 @@ def e2e_cmd(python_bin: Path, impl: str, data_path: Path, out_path: Path, seed: 
             "--init",
             INIT,
         ]
-    if impl == "rust_umap_py":
+    if impl == "umap_rs":
         return [
             str(python_bin),
             "-I",
@@ -505,7 +505,7 @@ def algo_cmd(
             str(dist_path),
         ]
 
-    if impl == "rust_umap_py":
+    if impl == "umap_rs":
         return [
             str(python_bin),
             "-I",
@@ -610,7 +610,7 @@ def benchmark_e2e(
         if strategy_equivalence == "strict_exact"
         else (
             "Python path stays exact (force_approximation_algorithm=False), "
-            "while rust_umap_py switched to ANN because n_samples exceeded approx_knn_threshold."
+            "while umap_rs switched to ANN because n_samples exceeded approx_knn_threshold."
         )
     )
 
@@ -624,7 +624,7 @@ def benchmark_e2e(
                 "strategy": "exact",
                 "force_approximation_algorithm": False,
             },
-            "rust_umap_py": {
+            "umap_rs": {
                 "strategy": rust_runtime_strategy,
                 "use_approximate_knn": True,
                 "approx_knn_threshold": E2E_RUST_APPROX_THRESHOLD,
@@ -704,7 +704,7 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
     lines.append(
         f"- warmup={report['config']['warmup']}, repeats={report['config']['repeats']}, python_bin={display_executable(python_bin)}"
     )
-    lines.append("- implementations: python_umap_learn, rust_umap_py")
+    lines.append("- implementations: python_umap_learn, umap_rs")
     lines.append("- groups: e2e_mixed_knn_strategy, algo_exact_shared_knn_exact")
     lines.append("- thread pinning: " + ", ".join([f"{k}={v}" for k, v in THREAD_ENV.items()]))
     lines.append("")
@@ -723,7 +723,7 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         "- This group intentionally keeps each implementation's runtime defaults; strategy may differ across implementations/datasets."
     )
     lines.append(
-        "- python_umap_learn: exact kNN (`force_approximation_algorithm=False`); rust_umap_py: adaptive (`use_approximate_knn=True`, threshold=4096)."
+        "- python_umap_learn: exact kNN (`force_approximation_algorithm=False`); umap_rs: adaptive (`use_approximate_knn=True`, threshold=4096)."
     )
     lines.append("")
     for ds_name, ds in report["groups"][GROUP_E2E_MIXED].items():
@@ -743,7 +743,7 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         lines.append(f"- knn_strategy_equivalence: {s['equivalence']}")
         lines.append(f"- knn_strategy_note: {s['note']}")
         lines.append(f"- python_umap_learn strategy: {s['python_umap_learn']['strategy']}")
-        lines.append(f"- rust_umap_py strategy: {s['rust_umap_py']['strategy']}")
+        lines.append(f"- umap_rs strategy: {s['umap_rs']['strategy']}")
         lines.append(f"- sample_size_for_consistency: {c['sample_size_for_consistency']}")
         lines.append("- trustworthiness@15:")
         for impl in IMPLS:
@@ -751,9 +751,9 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         lines.append("- original_knn_recall@15:")
         for impl in IMPLS:
             lines.append(f"  - {impl}: {c['original_knn_recall_at_15'][impl]:.6f}")
-        pair = c["pairwise"]["python_umap_learn__vs__rust_umap_py"]
+        pair = c["pairwise"]["python_umap_learn__vs__umap_rs"]
         lines.append(
-            f"- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity={pair['procrustes_disparity']:.6f}, knn_overlap@15={pair['knn_overlap_at_15']:.6f}"
+            f"- pairwise python_umap_learn vs umap_rs: procrustes_disparity={pair['procrustes_disparity']:.6f}, knn_overlap@15={pair['knn_overlap_at_15']:.6f}"
         )
         lines.append("")
 
@@ -781,9 +781,9 @@ def render_markdown(report: Dict[str, object], python_bin: Path) -> str:
         lines.append("- original_knn_recall@15:")
         for impl in IMPLS:
             lines.append(f"  - {impl}: {c['original_knn_recall_at_15'][impl]:.6f}")
-        pair = c["pairwise"]["python_umap_learn__vs__rust_umap_py"]
+        pair = c["pairwise"]["python_umap_learn__vs__umap_rs"]
         lines.append(
-            f"- pairwise python_umap_learn vs rust_umap_py: procrustes_disparity={pair['procrustes_disparity']:.6f}, knn_overlap@15={pair['knn_overlap_at_15']:.6f}"
+            f"- pairwise python_umap_learn vs umap_rs: procrustes_disparity={pair['procrustes_disparity']:.6f}, knn_overlap@15={pair['knn_overlap_at_15']:.6f}"
         )
         lines.append("")
 
@@ -832,7 +832,7 @@ def main() -> None:
             GROUP_E2E_MIXED: {
                 "fairness": "not_strict_by_design",
                 "python_umap_learn_knn": "exact (force_approximation_algorithm=False)",
-                "rust_umap_py_knn": (
+                "umap_rs_knn": (
                     "adaptive (use_approximate_knn=True, approx_knn_threshold="
                     f"{E2E_RUST_APPROX_THRESHOLD})"
                 ),
@@ -844,7 +844,7 @@ def main() -> None:
             GROUP_ALGO_EXACT: {
                 "fairness": "strict_exact_equivalent",
                 "python_umap_learn_knn": "shared precomputed exact kNN",
-                "rust_umap_py_knn": "shared precomputed exact kNN",
+                "umap_rs_knn": "shared precomputed exact kNN",
                 "note": "Primary fairness group for algorithm-level speed/memory/consistency conclusions.",
             },
         },
