@@ -12,21 +12,19 @@ permissions:
 
 jobs:
   build-wheel:
-    name: build-wheel (${{ matrix.name }})
+    name: build-wheel (${{ matrix.name }}, py${{ matrix.python_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
+        python_version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
         include:
           - name: linux-x86_64
             os: ubuntu-latest
-            maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python3.12
           - name: windows-x86_64
             os: windows-latest
-            maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python
           - name: macos-arm64
             os: macos-14
-            maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python
 
     steps:
       - uses: actions/checkout@v4
@@ -35,18 +33,18 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python_version }}
 
       - uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: ${{ matrix.maturin_args }}
+          args: ${{ matrix.name == 'linux-x86_64' && format('--manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python{0}', matrix.python_version) || '--manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python' }}
           sccache: "true"
           manylinux: auto
 
       - uses: actions/upload-artifact@v4
         with:
-          name: wheel-${{ matrix.name }}
+          name: wheel-${{ matrix.name }}-py${{ matrix.python_version }}
           path: rust_umap_py/dist/*.whl
           if-no-files-found: error
 
@@ -100,20 +98,56 @@ jobs:
       - name: Check artifact metadata
         run: uvx twine check dist/*
 
-      - name: Install smoke test from linux wheel
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-release-dist
+          path: dist/*
+          if-no-files-found: error
+
+  smoke-linux-wheel:
+    name: smoke-linux-wheel (py${{ matrix.python_version }})
+    needs: [build-wheel]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python_version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-*
+          path: dist
+          merge-multiple: true
+
+      - name: Install smoke test from matching linux wheel
         shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python_version }}
         run: |
           set -euo pipefail
-          wheel_path="$(find dist -maxdepth 1 -type f -name '*cp312*manylinux*.whl' | head -n 1)"
+          py_tag="cp${PYTHON_VERSION/./}"
+          wheel_path="$(find dist -maxdepth 1 -type f -name "*${py_tag}*manylinux*.whl" | head -n 1)"
           if [[ -z "${wheel_path}" ]]; then
-            echo "linux cp312 wheel not found" >&2
+            echo "linux wheel not found for ${PYTHON_VERSION}" >&2
             exit 1
           fi
+
+          export EXPECTED_VERSION
+          EXPECTED_VERSION="$(basename "${wheel_path}" | sed -E 's/^rust_umap_py-([0-9][^-]*)-.*/\1/')"
 
           uv venv --python "$(command -v python)" .venv-wheel-smoke
           uv pip install --python .venv-wheel-smoke/bin/python "${wheel_path}"
           .venv-wheel-smoke/bin/python - <<'PY'
           import inspect
+          import os
+
           import numpy as np
           from rust_umap_py import Umap, UmapKwargs, __version__, fit_transform
 
@@ -122,23 +156,70 @@ jobs:
           emb = fit_transform(x, **kwargs)
           model = Umap(**kwargs)
 
-          assert __version__ == "0.3.0"
+          assert __version__ == os.environ["EXPECTED_VERSION"]
           assert emb.shape == (32, 2)
           assert emb.dtype == np.float32
           assert "kwargs" in inspect.signature(fit_transform).parameters
           assert hasattr(model, "fit_transform_with_knn")
           PY
 
-      - uses: actions/upload-artifact@v4
+  test-sdist-py314:
+    name: test-sdist-py314
+    needs: [build-sdist]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/setup-python@v5
         with:
-          name: python-release-dist
-          path: dist/*
-          if-no-files-found: error
+          python-version: "3.14"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: astral-sh/setup-uv@v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+      - name: Install smoke test from sdist on Python 3.14
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdist_path="$(find dist -maxdepth 1 -type f -name '*.tar.gz' | head -n 1)"
+          if [[ -z "${sdist_path}" ]]; then
+            echo "sdist artifact not found" >&2
+            exit 1
+          fi
+
+          export EXPECTED_VERSION
+          EXPECTED_VERSION="$(basename "${sdist_path}" | sed -E 's/^rust_umap_py-([0-9][^-]*)\.tar\.gz$/\1/')"
+
+          uv venv --python "$(command -v python)" .venv-sdist-smoke
+          uv pip install --python .venv-sdist-smoke/bin/python "${sdist_path}"
+          .venv-sdist-smoke/bin/python - <<'PY'
+          import inspect
+          import os
+
+          import numpy as np
+          from rust_umap_py import Umap, UmapKwargs, __version__, fit_transform
+
+          x = np.random.default_rng(0).normal(size=(32, 6)).astype(np.float32)
+          kwargs: UmapKwargs = {"n_neighbors": 10, "n_components": 2, "init": "random"}
+          emb = fit_transform(x, **kwargs)
+          model = Umap(**kwargs)
+
+          assert __version__ == os.environ["EXPECTED_VERSION"]
+          assert emb.shape == (32, 2)
+          assert emb.dtype == np.float32
+          assert "kwargs" in inspect.signature(fit_transform).parameters
+          assert hasattr(model, "fit_transform_with_knn")
+          PY
 
   publish-pypi:
     name: publish-pypi
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: [verify-artifacts]
+    needs: [verify-artifacts, smoke-linux-wheel, test-sdist-py314]
     runs-on: ubuntu-latest
     permissions:
       contents: read
