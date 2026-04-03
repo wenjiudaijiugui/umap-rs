@@ -3,7 +3,7 @@
 [中文版本](README_CN.md)
 
 A Rust-first UMAP implementation with fairness-controlled benchmarking against
-Python `umap-learn` and R `uwot`.
+Python `umap-learn`.
 
 The repository includes:
 
@@ -191,11 +191,6 @@ See `docs/adr/ADR-L8-scope-alignment.md` for the repo-level scope decision.
 
 ## Benchmark reports
 
-The latest fairness-controlled real-dataset report is available at:
-
-- `benchmarks/report_real_fair.md`
-- `benchmarks/report_real_fair.json`
-
 The ecosystem binding comparison report is available at:
 
 - `benchmarks/report_ecosystem_python_binding.md`
@@ -219,6 +214,17 @@ Outputs:
 
 `e2e_mixed_knn_strategy` is useful for ecosystem smoke. For the strictest
 binding comparison, prefer `algo_exact_shared_knn_exact`.
+
+To run the core Rust-vs-Python fairness harness locally:
+
+```bash
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" benchmarks/compare_real_impls_fair.py \
+  --python-bin "$PYTHON_BIN" \
+  --warmup 1 \
+  --repeats 3 \
+  --sample-cap-consistency 2000
+```
 
 ## Local validation
 

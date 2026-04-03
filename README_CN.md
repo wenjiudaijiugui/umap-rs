@@ -3,7 +3,7 @@
 [English Version](README.md)
 
 一个以 Rust 为中心的 UMAP 实现，并提供面向公平比较的 benchmark，
-用于和 Python `umap-learn` 与 R `uwot` 进行可复现对比。
+用于和 Python `umap-learn` 进行可复现对比。
 
 仓库包含：
 
@@ -182,11 +182,6 @@ emb = model.fit_transform_with_knn(
 
 ## Benchmark 报告
 
-最新的公平实数据报告位于：
-
-- `benchmarks/report_real_fair.md`
-- `benchmarks/report_real_fair.json`
-
 生态级 Python 绑定对比报告位于：
 
 - `benchmarks/report_ecosystem_python_binding.md`
@@ -210,6 +205,17 @@ PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
 
 `e2e_mixed_knn_strategy` 更适合生态级 smoke。若要做最严格的绑定对比，
 优先看 `algo_exact_shared_knn_exact`。
+
+如果要本地运行 core Rust 对 Python `umap-learn` 的公平对比：
+
+```bash
+PYTHON_BIN="${PYTHON_BIN:-$(command -v python3 || command -v python)}"
+"$PYTHON_BIN" benchmarks/compare_real_impls_fair.py \
+  --python-bin "$PYTHON_BIN" \
+  --warmup 1 \
+  --repeats 3 \
+  --sample-cap-consistency 2000
+```
 
 ## 本地验证
 

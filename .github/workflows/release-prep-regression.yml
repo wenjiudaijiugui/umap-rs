@@ -70,7 +70,6 @@ jobs:
             --candidate-root "$GITHUB_WORKSPACE" \
             --baseline-root "$RUNNER_TEMP/umap-rs-baseline" \
             --python-bin python \
-            --rscript-bin "" \
             --gate-config benchmarks/gate_thresholds.json \
             --metrics euclidean,manhattan,cosine \
             --output-json release-prep-regression.json

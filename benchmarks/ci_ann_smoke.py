@@ -46,7 +46,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--gate-config", default=str(THRESHOLDS_PATH))
     parser.add_argument("--python-bin", default=sys.executable)
-    parser.add_argument("--rscript-bin", default="")
     parser.add_argument("--seed", type=int, default=None)
     parser.add_argument("--warmup", type=int, default=None)
     parser.add_argument("--repeats", type=int, default=None)
@@ -146,7 +145,6 @@ def main() -> None:
     fair = fair_module
 
     fair.PYTHON_BIN = Path(args.python_bin)
-    fair.RSCRIPT_BIN = Path(args.rscript_bin) if args.rscript_bin else Path("Rscript")
     configure_rust_bins(
         fair,
         rust_fit_bin=args.rust_fit_bin,

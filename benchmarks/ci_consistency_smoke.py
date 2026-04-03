@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -44,8 +43,6 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="CI smoke consistency gate against public UMAP implementations")
     p.add_argument("--gate-config", default=str(THRESHOLDS_PATH))
     p.add_argument("--python-bin", default=sys.executable)
-    p.add_argument("--rscript-bin", default=shutil.which("Rscript") or "")
-    p.add_argument("--require-r", action="store_true")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--warmup", type=int, default=None)
     p.add_argument("--repeats", type=int, default=None)
@@ -74,16 +71,6 @@ def parse_args() -> argparse.Namespace:
     if args.pairwise_min_overlap is None:
         args.pairwise_min_overlap = float(config["pairwise_min_overlap"])
     return args
-
-
-def available_impls(args: argparse.Namespace) -> List[str]:
-    impls = ["python_umap_learn", "rust_umap"]
-    has_r = bool(args.rscript_bin) and shutil.which(args.rscript_bin) is not None if Path(args.rscript_bin).name == args.rscript_bin else Path(args.rscript_bin).exists()
-    if args.require_r and not has_r:
-        raise RuntimeError("--require-r was set but Rscript is not available")
-    if has_r:
-        impls.insert(1, "r_uwot")
-    return impls
 
 
 def summarize_dataset(name: str, consistency: Dict[str, object], impls: List[str], trust_gap: float, recall_gap: float, min_overlap: float) -> List[str]:
@@ -126,14 +113,13 @@ def main() -> None:
 
     fair = fair_module
     fair.PYTHON_BIN = Path(args.python_bin)
-    fair.RSCRIPT_BIN = Path(args.rscript_bin) if args.rscript_bin else Path("Rscript")
     configure_rust_bins(
         fair,
         rust_fit_bin=args.rust_fit_bin,
         rust_bench_bin=args.rust_bench_bin,
         skip_rust_build=args.skip_rust_build,
     )
-    impls = available_impls(args)
+    impls = ["python_umap_learn", "rust_umap"]
 
     all_failures: List[str] = []
     summary: Dict[str, object] = {
@@ -145,7 +131,6 @@ def main() -> None:
             "repeats": args.repeats,
             "sample_cap": args.sample_cap,
             "thread_env": fair.THREAD_ENV,
-            "requires_r": bool(args.require_r),
         },
     }
 

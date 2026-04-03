@@ -3,7 +3,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
@@ -48,20 +47,10 @@ DEFAULT_PYTHON_BIN = Path(
         str(Path(sys.executable)),
     )
 )
-DEFAULT_RSCRIPT_BIN = Path(
-    os.environ.get(
-        "UMAP_BENCH_RSCRIPT",
-        str(shutil.which("Rscript") or "Rscript"),
-    )
-)
-
 PYTHON_BIN = DEFAULT_PYTHON_BIN
-RSCRIPT_BIN = DEFAULT_RSCRIPT_BIN
 
 RUN_PY_E2E = BENCH_DIR / "run_python_umap.py"
-RUN_R_E2E = BENCH_DIR / "run_r_uwot.R"
 RUN_PY_ALGO = BENCH_DIR / "run_python_umap_algo.py"
-RUN_R_ALGO = BENCH_DIR / "run_r_uwot_algo.R"
 
 RUST_FIT = ROOT / "rust_umap" / "target" / "release" / "fit_csv"
 RUST_BENCH = ROOT / "rust_umap" / "target" / "release" / "bench_fit_csv"
@@ -72,7 +61,7 @@ N_EPOCHS = 200
 INIT = "random"
 SUPPORTED_METRICS = ("euclidean", "manhattan", "cosine")
 
-IMPLS = ["python_umap_learn", "r_uwot", "rust_umap"]
+IMPLS = ["python_umap_learn", "rust_umap"]
 
 THREAD_ENV = {
     "OMP_NUM_THREADS": "1",
@@ -113,7 +102,6 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--large-max-samples", type=int, default=15000)
     p.add_argument("--sample-cap-consistency", type=int, default=2000)
     p.add_argument("--python-bin", default=str(DEFAULT_PYTHON_BIN))
-    p.add_argument("--rscript-bin", default=str(DEFAULT_RSCRIPT_BIN))
     p.add_argument(
         "--metrics",
         default="euclidean,manhattan,cosine",
@@ -371,18 +359,6 @@ def e2e_cmd(impl: str, data_path: Path, out_path: Path, seed: int) -> List[str]:
             "--init",
             INIT,
         ]
-    if impl == "r_uwot":
-        return [
-            str(RSCRIPT_BIN),
-            str(RUN_R_E2E),
-            str(data_path),
-            str(out_path),
-            str(N_NEIGHBORS),
-            str(N_COMPONENTS),
-            str(N_EPOCHS),
-            str(seed),
-            INIT,
-        ]
     if impl == "rust_umap":
         return [
             str(RUST_FIT),
@@ -441,23 +417,6 @@ def algo_exact_cmd(
             "--knn-indices",
             str(idx_path),
             "--knn-dists",
-            str(dist_path),
-        ]
-    if impl == "r_uwot":
-        return [
-            str(RSCRIPT_BIN),
-            str(RUN_R_ALGO),
-            str(data_path),
-            str(out_path),
-            str(N_NEIGHBORS),
-            str(N_COMPONENTS),
-            str(N_EPOCHS),
-            str(seed),
-            INIT,
-            metric,
-            str(warmup),
-            str(repeats),
-            str(idx_path),
             str(dist_path),
         ]
     if impl == "rust_umap":
@@ -847,10 +806,9 @@ def evaluate_quality_gate(report: Dict[str, object], thresholds: Dict[str, float
 
 
 def main() -> None:
-    global PYTHON_BIN, RSCRIPT_BIN
+    global PYTHON_BIN
     args = parse_args()
     PYTHON_BIN = Path(args.python_bin)
-    RSCRIPT_BIN = Path(args.rscript_bin)
     ensure_dirs()
     build_rust_binaries()
     metrics = parse_metrics(args.metrics)
@@ -964,7 +922,6 @@ def main() -> None:
     )
     lines.append(f"- warmup={args.warmup}, repeats={args.repeats}, randomized_order_per_repeat=True")
     lines.append(f"- python_bin={display_executable(PYTHON_BIN)}")
-    lines.append(f"- rscript_bin={display_executable(RSCRIPT_BIN)}")
     lines.append("- groups: e2e_default_ann, algo_exact_shared_knn")
     lines.append(f"- e2e_metric=euclidean")
     lines.append(f"- algo_exact_metrics={','.join(metrics)}")

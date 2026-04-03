@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shlex
 import subprocess
 import sys
@@ -45,16 +44,6 @@ def parse_args() -> argparse.Namespace:
         "--python-bin",
         default=sys.executable,
         help="python executable used to invoke child gate scripts",
-    )
-    parser.add_argument(
-        "--rscript-bin",
-        default=os.environ.get("UMAP_BENCH_RSCRIPT", ""),
-        help="Rscript executable for consistency gate (default: env or empty)",
-    )
-    parser.add_argument(
-        "--require-r",
-        action="store_true",
-        help="require R for the consistency gate",
     )
     parser.add_argument(
         "--metrics",
@@ -324,8 +313,6 @@ def main() -> int:
             script_args=[
                 "--python-bin",
                 args.python_bin,
-                "--rscript-bin",
-                args.rscript_bin,
                 *_candidate_rust_bin_args(candidate_bins, candidate_root),
             ],
             cwd=candidate_root,
@@ -335,21 +322,16 @@ def main() -> int:
         )
     )
 
-    consistency_args = [
-        "--python-bin",
-        args.python_bin,
-        "--rscript-bin",
-        args.rscript_bin,
-        *_candidate_rust_bin_args(candidate_bins, candidate_root),
-    ]
-    if args.require_r:
-        consistency_args.append("--require-r")
     results.append(
         _run_gate(
             gate_id="consistency_smoke",
             python_bin=args.python_bin,
             script_path=consistency_script,
-            script_args=consistency_args,
+            script_args=[
+                "--python-bin",
+                args.python_bin,
+                *_candidate_rust_bin_args(candidate_bins, candidate_root),
+            ],
             cwd=candidate_root,
             artifact_path=artifacts_dir / "consistency-smoke.json",
             gate_config=gate_config,
@@ -400,7 +382,6 @@ def main() -> int:
         else "",
         "metrics": metrics,
         "gate_config": _path_for_command(gate_config, candidate_root) if gate_config is not None else "",
-        "require_r": args.require_r,
         "artifacts_dir": _path_for_command(artifacts_dir, candidate_root),
         "build_reuse": {
             "candidate_fit_csv": _path_for_command(candidate_bins.fit_csv, candidate_root)

@@ -47,7 +47,6 @@ jobs:
         run: |
           python benchmarks/ci_consistency_smoke.py \
             --python-bin python \
-            --rscript-bin "" \
             --gate-config benchmarks/gate_thresholds.json \
             --output-json consistency-smoke.json
       - name: Upload consistency smoke artifact
