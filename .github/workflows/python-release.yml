@@ -20,7 +20,7 @@ jobs:
         include:
           - name: linux-x86_64
             os: ubuntu-latest
-            maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist
+            maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python3.12
           - name: windows-x86_64
             os: windows-latest
             maturin_args: --manifest-path rust_umap_py/Cargo.toml --release --out rust_umap_py/dist -i python
